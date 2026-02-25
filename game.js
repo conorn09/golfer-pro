@@ -3,18 +3,38 @@ const ctx = canvas.getContext('2d');
 
 // Game state
 const game = {
-    ball: { x: 100, y: 300, vx: 0, vy: 0, radius: 4 },
+    ball: { x: 100, y: 300, vx: 0, vy: 0, z: 0, vz: 0, radius: 4 },
     hole: { x: 700, y: 300, radius: 8 },
     tee: { x: 100, y: 300 },
     powerMeter: { charging: false, power: 0, maxPower: 20 },
     strokes: 0,
     isMoving: false,
     won: false,
-    golfer: { x: 100, y: 300, swinging: false, swingFrame: 0 }
+    golfer: { x: 100, y: 300, swinging: false, swingFrame: 0 },
+    inAir: false
+};
+
+// Course obstacles
+const obstacles = {
+    sandTraps: [
+        { x: 300, y: 200, width: 80, height: 60 },
+        { x: 500, y: 350, width: 70, height: 50 }
+    ],
+    trees: [
+        { x: 250, y: 150, radius: 15 },
+        { x: 400, y: 450, radius: 15 },
+        { x: 550, y: 180, radius: 15 }
+    ],
+    slopes: [
+        { x: 400, y: 280, width: 100, height: 80, direction: { x: 0, y: 0.3 } }
+    ]
 };
 
 const FRICTION = 0.98;
+const SAND_FRICTION = 0.85;
 const MIN_VELOCITY = 0.1;
+const GRAVITY = 0.3;
+const GREEN_RADIUS = 80;
 
 // Mouse handling
 let mouseDown = false;
@@ -52,8 +72,30 @@ function shoot() {
     
     if (distance > 0) {
         const power = game.powerMeter.power;
-        game.ball.vx = (dx / distance) * power;
-        game.ball.vy = (dy / distance) * power;
+        
+        // Check if on green (putting)
+        const distToHole = Math.sqrt(
+            (game.ball.x - game.hole.x) ** 2 + 
+            (game.ball.y - game.hole.y) ** 2
+        );
+        const onGreen = distToHole < GREEN_RADIUS;
+        
+        if (onGreen) {
+            // Putting - ball rolls on ground
+            game.ball.vx = (dx / distance) * power;
+            game.ball.vy = (dy / distance) * power;
+            game.ball.z = 0;
+            game.ball.vz = 0;
+            game.inAir = false;
+        } else {
+            // Full shot - ball flies through air (slower horizontal speed)
+            game.ball.vx = (dx / distance) * power * 0.6;
+            game.ball.vy = (dy / distance) * power * 0.6;
+            game.ball.z = 0;
+            game.ball.vz = power * 0.8; // Launch angle
+            game.inAir = true;
+        }
+        
         game.isMoving = true;
         game.strokes++;
         game.golfer.swinging = true;
@@ -90,12 +132,66 @@ function update() {
         game.ball.x += game.ball.vx;
         game.ball.y += game.ball.vy;
         
-        // Apply friction
-        game.ball.vx *= FRICTION;
-        game.ball.vy *= FRICTION;
+        // Update flight physics
+        if (game.inAir) {
+            game.ball.z += game.ball.vz;
+            game.ball.vz -= GRAVITY;
+            
+            // Ball lands
+            if (game.ball.z <= 0) {
+                game.ball.z = 0;
+                game.inAir = false;
+                // Reduce velocity on landing
+                game.ball.vx *= 0.6;
+                game.ball.vy *= 0.6;
+            }
+        }
         
-        // Stop if velocity is too low
-        if (Math.abs(game.ball.vx) < MIN_VELOCITY && Math.abs(game.ball.vy) < MIN_VELOCITY) {
+        // Only check obstacles when ball is on ground
+        if (!game.inAir) {
+            // Check if ball is in sand trap
+            let inSand = false;
+            for (const sand of obstacles.sandTraps) {
+                if (game.ball.x > sand.x && game.ball.x < sand.x + sand.width &&
+                    game.ball.y > sand.y && game.ball.y < sand.y + sand.height) {
+                    inSand = true;
+                    break;
+                }
+            }
+            
+            // Check if ball is on slope
+            for (const slope of obstacles.slopes) {
+                if (game.ball.x > slope.x && game.ball.x < slope.x + slope.width &&
+                    game.ball.y > slope.y && game.ball.y < slope.y + slope.height) {
+                    game.ball.vx += slope.direction.x;
+                    game.ball.vy += slope.direction.y;
+                }
+            }
+            
+            // Apply friction (more in sand)
+            const currentFriction = inSand ? SAND_FRICTION : FRICTION;
+            game.ball.vx *= currentFriction;
+            game.ball.vy *= currentFriction;
+            
+            // Check tree collisions (only when on ground)
+            for (const tree of obstacles.trees) {
+                const dx = game.ball.x - tree.x;
+                const dy = game.ball.y - tree.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < tree.radius + game.ball.radius) {
+                    // Bounce off tree
+                    const angle = Math.atan2(dy, dx);
+                    game.ball.vx = Math.cos(angle) * Math.abs(game.ball.vx) * 0.5;
+                    game.ball.vy = Math.sin(angle) * Math.abs(game.ball.vy) * 0.5;
+                    game.ball.x = tree.x + Math.cos(angle) * (tree.radius + game.ball.radius);
+                    game.ball.y = tree.y + Math.sin(angle) * (tree.radius + game.ball.radius);
+                }
+            }
+        }
+        
+        // Stop if velocity is too low and on ground
+        if (!game.inAir && Math.abs(game.ball.vx) < MIN_VELOCITY && Math.abs(game.ball.vy) < MIN_VELOCITY) {
             game.ball.vx = 0;
             game.ball.vy = 0;
             game.isMoving = false;
@@ -117,11 +213,12 @@ function update() {
     const dy = game.ball.y - game.hole.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (distance < game.hole.radius - game.ball.radius) {
+    if (distance < game.hole.radius - game.ball.radius && !game.inAir) {
         game.ball.vx = 0;
         game.ball.vy = 0;
         game.ball.x = game.hole.x;
         game.ball.y = game.hole.y;
+        game.ball.z = 0;
         game.isMoving = false;
         game.won = true;
         updateUI();
@@ -137,14 +234,64 @@ function draw() {
     ctx.fillStyle = '#5a9c3c';
     ctx.fillRect(50, 250, 700, 100);
     
+    // Draw sand traps
+    ctx.fillStyle = '#E8D4A0';
+    for (const sand of obstacles.sandTraps) {
+        ctx.fillRect(sand.x, sand.y, sand.width, sand.height);
+        // Add texture dots
+        ctx.fillStyle = '#D4C090';
+        for (let i = 0; i < 20; i++) {
+            const dotX = sand.x + Math.random() * sand.width;
+            const dotY = sand.y + Math.random() * sand.height;
+            ctx.fillRect(dotX, dotY, 2, 2);
+        }
+        ctx.fillStyle = '#E8D4A0';
+    }
+    
+    // Draw slopes (darker green with lines)
+    ctx.fillStyle = '#4a8c3c';
+    for (const slope of obstacles.slopes) {
+        ctx.fillRect(slope.x, slope.y, slope.width, slope.height);
+        // Add slope lines
+        ctx.strokeStyle = '#3a7c2c';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) {
+            ctx.beginPath();
+            ctx.moveTo(slope.x, slope.y + (i * slope.height / 4));
+            ctx.lineTo(slope.x + slope.width, slope.y + (i * slope.height / 4) + 10);
+            ctx.stroke();
+        }
+    }
+    
     // Draw tee box
     ctx.fillStyle = '#6aac4c';
     ctx.fillRect(50, 270, 80, 60);
+    // Tee markers
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(55, 275, 4, 4);
+    ctx.fillRect(55, 321, 4, 4);
+    
+    // Draw trees
+    for (const tree of obstacles.trees) {
+        // Tree trunk
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(tree.x - 3, tree.y - 5, 6, 10);
+        // Tree foliage
+        ctx.fillStyle = '#2d5016';
+        ctx.beginPath();
+        ctx.arc(tree.x, tree.y - 8, tree.radius, 0, Math.PI * 2);
+        ctx.fill();
+        // Lighter green highlight
+        ctx.fillStyle = '#3a6c1c';
+        ctx.beginPath();
+        ctx.arc(tree.x - 4, tree.y - 10, 6, 0, Math.PI * 2);
+        ctx.fill();
+    }
     
     // Draw green
     ctx.fillStyle = '#3a6c2c';
     ctx.beginPath();
-    ctx.arc(game.hole.x, game.hole.y, 50, 0, Math.PI * 2);
+    ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
     ctx.fill();
     
     // Draw hole
@@ -168,12 +315,30 @@ function draw() {
     ctx.lineTo(game.hole.x, game.hole.y - 16);
     ctx.fill();
     
+    // Draw ball shadow (when in air)
+    if (game.inAir && game.ball.z > 0) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        const shadowSize = game.ball.radius * (1 + game.ball.z / 50);
+        ctx.beginPath();
+        ctx.ellipse(game.ball.x, game.ball.y, shadowSize, shadowSize * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
     // Draw ball
     if (!game.golfer.swinging || game.golfer.swingFrame > 5) {
+        const ballY = game.ball.y - game.ball.z;
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(game.ball.x, game.ball.y, game.ball.radius, 0, Math.PI * 2);
+        ctx.arc(game.ball.x, ballY, game.ball.radius, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Add highlight to show 3D effect
+        if (game.ball.z > 0) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.beginPath();
+            ctx.arc(game.ball.x - 1, ballY - 1, game.ball.radius * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
     
     // Draw golfer (only when ball is not moving or just hit)
@@ -305,10 +470,17 @@ function updateUI() {
         else if (diff === 1) message = 'Bogey';
         else message = 'Complete!';
         status.textContent = message + ' - Refresh to play again';
+    } else if (game.inAir) {
+        status.textContent = 'Ball in flight...';
     } else if (game.isMoving) {
         status.textContent = 'Ball rolling...';
     } else {
-        status.textContent = 'Click and hold to set power';
+        const distToHole = Math.sqrt(
+            (game.ball.x - game.hole.x) ** 2 + 
+            (game.ball.y - game.hole.y) ** 2
+        );
+        const onGreen = distToHole < GREEN_RADIUS;
+        status.textContent = onGreen ? 'On the green - Click to putt' : 'Click and hold to set power';
     }
 }
 
