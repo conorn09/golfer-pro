@@ -9,7 +9,8 @@ const game = {
     powerMeter: { charging: false, power: 0, maxPower: 20 },
     strokes: 0,
     isMoving: false,
-    won: false
+    won: false,
+    golfer: { x: 100, y: 300, swinging: false, swingFrame: 0 }
 };
 
 const FRICTION = 0.98;
@@ -55,6 +56,8 @@ function shoot() {
         game.ball.vy = (dy / distance) * power;
         game.isMoving = true;
         game.strokes++;
+        game.golfer.swinging = true;
+        game.golfer.swingFrame = 0;
         updateUI();
     }
 }
@@ -66,6 +69,20 @@ function update() {
         if (game.powerMeter.power > game.powerMeter.maxPower) {
             game.powerMeter.power = 0;
         }
+    }
+    
+    // Update swing animation
+    if (game.golfer.swinging) {
+        game.golfer.swingFrame++;
+        if (game.golfer.swingFrame > 15) {
+            game.golfer.swinging = false;
+        }
+    }
+    
+    // Update golfer position to follow ball
+    if (!game.isMoving && !game.won) {
+        game.golfer.x = game.ball.x;
+        game.golfer.y = game.ball.y;
     }
     
     // Update ball physics
@@ -152,10 +169,17 @@ function draw() {
     ctx.fill();
     
     // Draw ball
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(game.ball.x, game.ball.y, game.ball.radius, 0, Math.PI * 2);
-    ctx.fill();
+    if (!game.golfer.swinging || game.golfer.swingFrame > 5) {
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(game.ball.x, game.ball.y, game.ball.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // Draw golfer (only when ball is not moving or just hit)
+    if (!game.isMoving || game.golfer.swinging) {
+        drawGolfer();
+    }
     
     // Draw aim line and power meter when charging
     if (game.powerMeter.charging) {
@@ -174,11 +198,11 @@ function draw() {
             ctx.stroke();
             ctx.setLineDash([]);
             
-            // Power meter
+            // Power meter (below golfer)
             const meterWidth = 100;
             const meterHeight = 20;
-            const meterX = game.ball.x - meterWidth / 2;
-            const meterY = game.ball.y - 40;
+            const meterX = game.golfer.x - meterWidth / 2;
+            const meterY = game.golfer.y + 25;
             
             ctx.fillStyle = '#333';
             ctx.fillRect(meterX, meterY, meterWidth, meterHeight);
@@ -191,6 +215,79 @@ function draw() {
             ctx.lineWidth = 2;
             ctx.strokeRect(meterX, meterY, meterWidth, meterHeight);
         }
+    }
+}
+
+function drawGolfer() {
+    const x = game.golfer.x;
+    const y = game.golfer.y;
+    const swingProgress = game.golfer.swinging ? game.golfer.swingFrame / 15 : 0;
+    
+    // Body (blue shirt)
+    ctx.fillStyle = '#4169E1';
+    ctx.fillRect(x - 3, y - 8, 6, 8);
+    
+    // Head (skin tone)
+    ctx.fillStyle = '#FFD4A3';
+    ctx.fillRect(x - 2, y - 12, 4, 4);
+    
+    // Hat
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(x - 3, y - 14, 6, 2);
+    
+    // Legs
+    ctx.fillStyle = '#2C3E50';
+    ctx.fillRect(x - 3, y, 2, 6);
+    ctx.fillRect(x + 1, y, 2, 6);
+    
+    // Golf club
+    if (game.golfer.swinging) {
+        // Swing animation
+        if (swingProgress < 0.3) {
+            // Backswing
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, y - 4);
+            ctx.lineTo(x - 8, y - 12);
+            ctx.stroke();
+            // Club head
+            ctx.fillStyle = '#C0C0C0';
+            ctx.fillRect(x - 10, y - 13, 3, 2);
+        } else if (swingProgress < 0.6) {
+            // Downswing
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, y - 4);
+            ctx.lineTo(x + 2, y + 4);
+            ctx.stroke();
+            // Club head
+            ctx.fillStyle = '#C0C0C0';
+            ctx.fillRect(x + 1, y + 4, 3, 2);
+        } else {
+            // Follow through
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, y - 4);
+            ctx.lineTo(x + 8, y - 8);
+            ctx.stroke();
+            // Club head
+            ctx.fillStyle = '#C0C0C0';
+            ctx.fillRect(x + 8, y - 9, 3, 2);
+        }
+    } else {
+        // Resting position
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 4);
+        ctx.lineTo(x - 4, y + 6);
+        ctx.stroke();
+        // Club head
+        ctx.fillStyle = '#C0C0C0';
+        ctx.fillRect(x - 6, y + 6, 3, 2);
     }
 }
 
