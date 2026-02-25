@@ -45,9 +45,64 @@ const obstacles = {
         }
     ],
     trees: [
-        { x: 250, y: 150, radius: 15 },
-        { x: 400, y: 450, radius: 15 },
-        { x: 550, y: 180, radius: 15 }
+        // Left side of fairway - hugging the edge (y around 230-240)
+        { x: 40, y: 235, radius: 15 },
+        { x: 75, y: 230, radius: 15 },
+        { x: 85, y: 240, radius: 15 },
+        { x: 125, y: 232, radius: 15 },
+        { x: 155, y: 238, radius: 15 },
+        { x: 170, y: 228, radius: 15 },
+        { x: 205, y: 235, radius: 15 },
+        { x: 235, y: 230, radius: 15 },
+        { x: 250, y: 240, radius: 15 },
+        { x: 285, y: 233, radius: 15 },
+        { x: 315, y: 237, radius: 15 },
+        { x: 330, y: 228, radius: 15 },
+        { x: 365, y: 235, radius: 15 },
+        { x: 395, y: 230, radius: 15 },
+        { x: 410, y: 240, radius: 15 },
+        { x: 445, y: 232, radius: 15 },
+        { x: 475, y: 238, radius: 15 },
+        { x: 490, y: 228, radius: 15 },
+        { x: 525, y: 235, radius: 15 },
+        { x: 555, y: 230, radius: 15 },
+        { x: 570, y: 240, radius: 15 },
+        { x: 605, y: 233, radius: 15 },
+        { x: 635, y: 237, radius: 15 },
+        { x: 650, y: 228, radius: 15 },
+        { x: 685, y: 235, radius: 15 },
+        { x: 715, y: 230, radius: 15 },
+        { x: 730, y: 240, radius: 15 },
+        { x: 765, y: 233, radius: 15 },
+        // Right side of fairway - hugging the edge (y around 360-370)
+        { x: 40, y: 365, radius: 15 },
+        { x: 75, y: 370, radius: 15 },
+        { x: 85, y: 360, radius: 15 },
+        { x: 125, y: 368, radius: 15 },
+        { x: 155, y: 362, radius: 15 },
+        { x: 170, y: 372, radius: 15 },
+        { x: 205, y: 365, radius: 15 },
+        { x: 235, y: 370, radius: 15 },
+        { x: 250, y: 360, radius: 15 },
+        { x: 285, y: 367, radius: 15 },
+        { x: 315, y: 363, radius: 15 },
+        { x: 330, y: 372, radius: 15 },
+        { x: 365, y: 365, radius: 15 },
+        { x: 395, y: 370, radius: 15 },
+        { x: 410, y: 360, radius: 15 },
+        { x: 445, y: 368, radius: 15 },
+        { x: 475, y: 362, radius: 15 },
+        { x: 490, y: 372, radius: 15 },
+        { x: 525, y: 365, radius: 15 },
+        { x: 555, y: 370, radius: 15 },
+        { x: 570, y: 360, radius: 15 },
+        { x: 605, y: 367, radius: 15 },
+        { x: 635, y: 363, radius: 15 },
+        { x: 650, y: 372, radius: 15 },
+        { x: 685, y: 365, radius: 15 },
+        { x: 715, y: 370, radius: 15 },
+        { x: 730, y: 360, radius: 15 },
+        { x: 765, y: 367, radius: 15 }
     ],
     slopes: [
         { 
@@ -74,6 +129,7 @@ const grassTexture = [];
 const fairwayTexture = [];
 const greenTexture = [];
 const sandTextures = [[], []];
+const fallenLeaves = [];
 
 // Generate static textures
 for (let i = 0; i < 400; i++) {
@@ -100,6 +156,15 @@ for (let s = 0; s < 2; s++) {
             color: Math.random() > 0.5 ? '#D4C090' : '#F0E4B0'
         });
     }
+}
+// Fallen leaves scattered around
+for (let i = 0; i < 60; i++) {
+    fallenLeaves.push({
+        x: Math.random() * 800,
+        y: Math.random() * 600,
+        color: Math.random() > 0.5 ? '#8B4513' : (Math.random() > 0.5 ? '#A0522D' : '#CD853F'),
+        size: Math.random() > 0.5 ? 2 : 3
+    });
 }
 
 // Mouse handling
@@ -439,7 +504,39 @@ function draw() {
     ctx.fillRect(55, 275, 4, 4);
     ctx.fillRect(55, 321, 4, 4);
     
-    // Draw trees with pixel art style
+    // Draw green (before trees so trees can overlap it)
+    ctx.fillStyle = '#3a6c2c';
+    ctx.beginPath();
+    ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Add static green texture with circular mowing pattern
+    ctx.fillStyle = '#2a5c1c';
+    for (const blade of greenTexture) {
+        ctx.fillRect(blade.x, blade.y, 1, 1);
+    }
+    // Circular mowing rings
+    ctx.strokeStyle = 'rgba(42, 92, 28, 0.1)';
+    ctx.lineWidth = 8;
+    for (let i = 1; i <= 4; i++) {
+        if (i % 2 === 0) {
+            ctx.beginPath();
+            ctx.arc(game.hole.x, game.hole.y, i * 20, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+    
+    // Draw fallen leaves
+    for (const leaf of fallenLeaves) {
+        ctx.fillStyle = leaf.color;
+        // Draw small leaf shape
+        ctx.fillRect(leaf.x, leaf.y, leaf.size, leaf.size);
+        // Add a darker dot for detail
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillRect(leaf.x + 1, leaf.y + 1, 1, 1);
+    }
+    
+    // Draw trees with pixel art style (after green so they appear in front)
     for (const tree of obstacles.trees) {
         const tx = tree.x;
         const ty = tree.y;
@@ -531,28 +628,6 @@ function draw() {
         ctx.fillRect(tx + 6, ty - 21, 2, 2);
         ctx.fillRect(tx - 2, ty - 17, 2, 2);
         ctx.fillRect(tx + 1, ty - 23, 2, 2);
-    }
-    
-    // Draw green
-    ctx.fillStyle = '#3a6c2c';
-    ctx.beginPath();
-    ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Add static green texture with circular mowing pattern
-    ctx.fillStyle = '#2a5c1c';
-    for (const blade of greenTexture) {
-        ctx.fillRect(blade.x, blade.y, 1, 1);
-    }
-    // Circular mowing rings
-    ctx.strokeStyle = 'rgba(42, 92, 28, 0.1)';
-    ctx.lineWidth = 8;
-    for (let i = 1; i <= 4; i++) {
-        if (i % 2 === 0) {
-            ctx.beginPath();
-            ctx.arc(game.hole.x, game.hole.y, i * 20, 0, Math.PI * 2);
-            ctx.stroke();
-        }
     }
     
     // Draw hole
