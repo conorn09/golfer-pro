@@ -26,8 +26,23 @@ const clubs = [
 // Course obstacles
 const obstacles = {
     sandTraps: [
-        { x: 300, y: 200, width: 80, height: 60 },
-        { x: 500, y: 350, width: 70, height: 50 }
+        { 
+            x: 300, y: 200, 
+            points: [
+                {x: 300, y: 215}, {x: 310, y: 205}, {x: 330, y: 200}, 
+                {x: 360, y: 202}, {x: 375, y: 210}, {x: 380, y: 230},
+                {x: 375, y: 255}, {x: 350, y: 260}, {x: 320, y: 258},
+                {x: 305, y: 245}, {x: 300, y: 225}
+            ]
+        },
+        { 
+            x: 500, y: 350,
+            points: [
+                {x: 500, y: 360}, {x: 515, y: 352}, {x: 540, y: 350},
+                {x: 565, y: 355}, {x: 570, y: 375}, {x: 560, y: 395},
+                {x: 535, y: 400}, {x: 510, y: 395}, {x: 500, y: 380}
+            ]
+        }
     ],
     trees: [
         { x: 250, y: 150, radius: 15 },
@@ -35,7 +50,16 @@ const obstacles = {
         { x: 550, y: 180, radius: 15 }
     ],
     slopes: [
-        { x: 400, y: 280, width: 100, height: 80, direction: { x: 0, y: 0.3 } }
+        { 
+            x: 400, y: 280, 
+            points: [
+                {x: 400, y: 290}, {x: 420, y: 280}, {x: 460, y: 280},
+                {x: 495, y: 285}, {x: 500, y: 310}, {x: 495, y: 350},
+                {x: 470, y: 360}, {x: 430, y: 360}, {x: 405, y: 350},
+                {x: 400, y: 320}
+            ],
+            direction: { x: 0, y: 0.3 } 
+        }
     ]
 };
 
@@ -44,6 +68,39 @@ const SAND_FRICTION = 0.85;
 const MIN_VELOCITY = 0.1;
 const GRAVITY = 0.3;
 const GREEN_RADIUS = 80;
+
+// Static texture patterns (generated once)
+const grassTexture = [];
+const fairwayTexture = [];
+const greenTexture = [];
+const sandTextures = [[], []];
+
+// Generate static textures
+for (let i = 0; i < 400; i++) {
+    grassTexture.push({ x: Math.random() * 800, y: Math.random() * 600 });
+}
+for (let i = 0; i < 200; i++) {
+    fairwayTexture.push({ x: 50 + Math.random() * 700, y: 250 + Math.random() * 100 });
+}
+for (let i = 0; i < 80; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * GREEN_RADIUS;
+    greenTexture.push({ 
+        x: 700 + Math.cos(angle) * radius, 
+        y: 300 + Math.sin(angle) * radius 
+    });
+}
+// Sand trap textures
+for (let s = 0; s < 2; s++) {
+    for (let i = 0; i < 50; i++) {
+        sandTextures[s].push({ 
+            x: obstacles.sandTraps[s].x + Math.random() * 80, 
+            y: obstacles.sandTraps[s].y + Math.random() * 60,
+            size: Math.random() > 0.7 ? 1 : 2,
+            color: Math.random() > 0.5 ? '#D4C090' : '#F0E4B0'
+        });
+    }
+}
 
 // Mouse handling
 let mouseDown = false;
@@ -137,9 +194,9 @@ function shoot() {
 }
 
 function update() {
-    // Charge power meter (loops back to 0 when it reaches max)
+    // Charge power meter (constant speed for all clubs)
     if (game.powerMeter.charging) {
-        game.powerMeter.power += 0.3;
+        game.powerMeter.power += 0.15;
         if (game.powerMeter.power > game.powerMeter.maxPower) {
             game.powerMeter.power = 0;
         }
@@ -184,8 +241,16 @@ function update() {
             // Check if ball is in sand trap
             let inSand = false;
             for (const sand of obstacles.sandTraps) {
-                if (game.ball.x > sand.x && game.ball.x < sand.x + sand.width &&
-                    game.ball.y > sand.y && game.ball.y < sand.y + sand.height) {
+                // Check if point is inside polygon
+                let inside = false;
+                for (let i = 0, j = sand.points.length - 1; i < sand.points.length; j = i++) {
+                    const xi = sand.points[i].x, yi = sand.points[i].y;
+                    const xj = sand.points[j].x, yj = sand.points[j].y;
+                    const intersect = ((yi > game.ball.y) !== (yj > game.ball.y))
+                        && (game.ball.x < (xj - xi) * (game.ball.y - yi) / (yj - yi) + xi);
+                    if (intersect) inside = !inside;
+                }
+                if (inside) {
                     inSand = true;
                     break;
                 }
@@ -193,8 +258,16 @@ function update() {
             
             // Check if ball is on slope
             for (const slope of obstacles.slopes) {
-                if (game.ball.x > slope.x && game.ball.x < slope.x + slope.width &&
-                    game.ball.y > slope.y && game.ball.y < slope.y + slope.height) {
+                // Check if point is inside polygon
+                let inside = false;
+                for (let i = 0, j = slope.points.length - 1; i < slope.points.length; j = i++) {
+                    const xi = slope.points[i].x, yi = slope.points[i].y;
+                    const xj = slope.points[j].x, yj = slope.points[j].y;
+                    const intersect = ((yi > game.ball.y) !== (yj > game.ball.y))
+                        && (game.ball.x < (xj - xi) * (game.ball.y - yi) / (yj - yi) + xi);
+                    if (intersect) inside = !inside;
+                }
+                if (inside) {
                     game.ball.vx += slope.direction.x;
                     game.ball.vy += slope.direction.y;
                 }
@@ -262,61 +335,131 @@ function draw() {
     ctx.fillStyle = '#4a7c2c';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
+    // Add static grass texture to background (rough)
+    ctx.fillStyle = '#3a6c1c';
+    for (const grass of grassTexture) {
+        ctx.fillRect(grass.x, grass.y, 1, 2);
+    }
+    
     // Draw fairway (lighter green path)
     ctx.fillStyle = '#5a9c3c';
     ctx.fillRect(50, 250, 700, 100);
     
-    // Draw sand traps
-    ctx.fillStyle = '#E8D4A0';
-    for (const sand of obstacles.sandTraps) {
-        ctx.fillRect(sand.x, sand.y, sand.width, sand.height);
-        // Add texture dots
-        ctx.fillStyle = '#D4C090';
-        for (let i = 0; i < 20; i++) {
-            const dotX = sand.x + Math.random() * sand.width;
-            const dotY = sand.y + Math.random() * sand.height;
-            ctx.fillRect(dotX, dotY, 2, 2);
+    // Add static fairway texture with horizontal mowing pattern
+    ctx.fillStyle = '#4a8c2c';
+    for (const blade of fairwayTexture) {
+        ctx.fillRect(blade.x, blade.y, 1, 2);
+    }
+    // Mowing stripes
+    ctx.fillStyle = 'rgba(74, 140, 44, 0.1)';
+    for (let i = 0; i < 7; i++) {
+        if (i % 2 === 0) {
+            ctx.fillRect(50 + i * 100, 250, 100, 100);
         }
-        ctx.fillStyle = '#E8D4A0';
     }
     
-    // Draw slopes (darker green with lines)
-    ctx.fillStyle = '#4a8c3c';
+    // Draw slopes with organic shapes
     for (const slope of obstacles.slopes) {
-        ctx.fillRect(slope.x, slope.y, slope.width, slope.height);
-        // Add slope lines
+        // Main slope color
+        ctx.fillStyle = '#4a8c3c';
+        ctx.beginPath();
+        ctx.moveTo(slope.points[0].x, slope.points[0].y);
+        for (let i = 1; i < slope.points.length; i++) {
+            ctx.lineTo(slope.points[i].x, slope.points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        
+        // Darker edge
         ctx.strokeStyle = '#3a7c2c';
         ctx.lineWidth = 2;
-        for (let i = 0; i < 4; i++) {
+        ctx.stroke();
+        
+        // Slope contour lines
+        ctx.strokeStyle = 'rgba(58, 124, 44, 0.4)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 5; i++) {
             ctx.beginPath();
-            ctx.moveTo(slope.x, slope.y + (i * slope.height / 4));
-            ctx.lineTo(slope.x + slope.width, slope.y + (i * slope.height / 4) + 10);
+            const offset = i * 15;
+            ctx.moveTo(slope.points[0].x + 5, slope.points[0].y + offset);
+            ctx.lineTo(slope.points[3].x - 5, slope.points[3].y + offset);
             ctx.stroke();
+        }
+    }
+    
+    // Draw sand traps with organic shapes
+    for (let s = 0; s < obstacles.sandTraps.length; s++) {
+        const sand = obstacles.sandTraps[s];
+        
+        // Main sand color
+        ctx.fillStyle = '#E8D4A0';
+        ctx.beginPath();
+        ctx.moveTo(sand.points[0].x, sand.points[0].y);
+        for (let i = 1; i < sand.points.length; i++) {
+            ctx.lineTo(sand.points[i].x, sand.points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        
+        // Darker edge
+        ctx.strokeStyle = '#D4C090';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Static sand texture
+        for (const grain of sandTextures[s]) {
+            ctx.fillStyle = grain.color;
+            ctx.fillRect(grain.x, grain.y, grain.size, grain.size);
         }
     }
     
     // Draw tee box
     ctx.fillStyle = '#6aac4c';
     ctx.fillRect(50, 270, 80, 60);
+    // Tee box texture
+    ctx.fillStyle = '#5a9c3c';
+    for (let i = 0; i < 30; i++) {
+        ctx.fillRect(50 + Math.random() * 80, 270 + Math.random() * 60, 1, 1);
+    }
     // Tee markers
     ctx.fillStyle = '#FF0000';
     ctx.fillRect(55, 275, 4, 4);
     ctx.fillRect(55, 321, 4, 4);
     
-    // Draw trees
+    // Draw trees with more detail
     for (const tree of obstacles.trees) {
+        // Tree shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.beginPath();
+        ctx.ellipse(tree.x + 2, tree.y + 3, 8, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
         // Tree trunk
-        ctx.fillStyle = '#8B4513';
+        ctx.fillStyle = '#6B3410';
         ctx.fillRect(tree.x - 3, tree.y - 5, 6, 10);
-        // Tree foliage
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(tree.x - 2, tree.y - 5, 4, 10);
+        
+        // Tree foliage - multiple layers
+        ctx.fillStyle = '#1d4010';
+        ctx.beginPath();
+        ctx.arc(tree.x, tree.y - 6, tree.radius + 2, 0, Math.PI * 2);
+        ctx.fill();
+        
         ctx.fillStyle = '#2d5016';
         ctx.beginPath();
         ctx.arc(tree.x, tree.y - 8, tree.radius, 0, Math.PI * 2);
         ctx.fill();
-        // Lighter green highlight
+        
+        // Lighter green highlights
         ctx.fillStyle = '#3a6c1c';
         ctx.beginPath();
         ctx.arc(tree.x - 4, tree.y - 10, 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#4a7c2c';
+        ctx.beginPath();
+        ctx.arc(tree.x + 3, tree.y - 9, 4, 0, Math.PI * 2);
         ctx.fill();
     }
     
@@ -325,6 +468,22 @@ function draw() {
     ctx.beginPath();
     ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
     ctx.fill();
+    
+    // Add static green texture with circular mowing pattern
+    ctx.fillStyle = '#2a5c1c';
+    for (const blade of greenTexture) {
+        ctx.fillRect(blade.x, blade.y, 1, 1);
+    }
+    // Circular mowing rings
+    ctx.strokeStyle = 'rgba(42, 92, 28, 0.1)';
+    ctx.lineWidth = 8;
+    for (let i = 1; i <= 4; i++) {
+        if (i % 2 === 0) {
+            ctx.beginPath();
+            ctx.arc(game.hole.x, game.hole.y, i * 20, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
     
     // Draw hole
     ctx.fillStyle = '#1a1a1a';
@@ -376,18 +535,6 @@ function draw() {
     // Draw golfer (only when ball is not moving or just hit)
     if (!game.isMoving || game.golfer.swinging) {
         drawGolfer();
-    }
-    
-    // Draw max distance indicator when not moving
-    if (!game.isMoving && !game.won) {
-        const club = clubs[game.selectedClub];
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.4)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([10, 10]);
-        ctx.beginPath();
-        ctx.arc(game.golfer.x, game.golfer.y, club.distance, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
     }
     
     // Draw club selector
