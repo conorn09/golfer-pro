@@ -11,8 +11,17 @@ const game = {
     isMoving: false,
     won: false,
     golfer: { x: 100, y: 300, swinging: false, swingFrame: 0 },
-    inAir: false
+    inAir: false,
+    selectedClub: 0
 };
+
+// Club definitions
+const clubs = [
+    { name: 'Putter', maxPower: 8, distance: 50, loft: 0 },
+    { name: 'Sand Wedge', maxPower: 12, distance: 80, loft: 1.2 },
+    { name: '7 Iron', maxPower: 16, distance: 150, loft: 0.9 },
+    { name: 'Driver', maxPower: 20, distance: 250, loft: 0.7 }
+];
 
 // Course obstacles
 const obstacles = {
@@ -45,6 +54,22 @@ canvas.addEventListener('mousedown', (e) => {
         const rect = canvas.getBoundingClientRect();
         mousePos.x = e.clientX - rect.left;
         mousePos.y = e.clientY - rect.top;
+        
+        // Check if clicking club selector arrows
+        if (mousePos.y > canvas.height - 80 && mousePos.y < canvas.height - 20) {
+            if (mousePos.x > 10 && mousePos.x < 30) {
+                // Left arrow
+                game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
+                game.powerMeter.maxPower = clubs[game.selectedClub].maxPower;
+                return;
+            } else if (mousePos.x > 110 && mousePos.x < 130) {
+                // Right arrow
+                game.selectedClub = (game.selectedClub + 1) % clubs.length;
+                game.powerMeter.maxPower = clubs[game.selectedClub].maxPower;
+                return;
+            }
+        }
+        
         mouseDown = true;
         game.powerMeter.charging = true;
         game.powerMeter.power = 0;
@@ -72,6 +97,11 @@ function shoot() {
     
     if (distance > 0) {
         const power = game.powerMeter.power;
+        const club = clubs[game.selectedClub];
+        
+        // Calculate power multiplier based on club distance
+        // This ensures max power = max distance shown
+        const powerMultiplier = club.distance / club.maxPower;
         
         // Check if on green (putting)
         const distToHole = Math.sqrt(
@@ -80,19 +110,21 @@ function shoot() {
         );
         const onGreen = distToHole < GREEN_RADIUS;
         
-        if (onGreen) {
+        if (onGreen || club.name === 'Putter') {
             // Putting - ball rolls on ground
-            game.ball.vx = (dx / distance) * power;
-            game.ball.vy = (dy / distance) * power;
+            const putterSpeed = power * (powerMultiplier / 20);
+            game.ball.vx = (dx / distance) * putterSpeed;
+            game.ball.vy = (dy / distance) * putterSpeed;
             game.ball.z = 0;
             game.ball.vz = 0;
             game.inAir = false;
         } else {
-            // Full shot - ball flies through air (slower horizontal speed)
-            game.ball.vx = (dx / distance) * power * 0.6;
-            game.ball.vy = (dy / distance) * power * 0.6;
+            // Full shot - ball flies through air
+            const shotSpeed = power * (powerMultiplier / 35);
+            game.ball.vx = (dx / distance) * shotSpeed;
+            game.ball.vy = (dy / distance) * shotSpeed;
             game.ball.z = 0;
-            game.ball.vz = power * 0.8; // Launch angle
+            game.ball.vz = power * club.loft * 0.5;
             game.inAir = true;
         }
         
@@ -346,6 +378,21 @@ function draw() {
         drawGolfer();
     }
     
+    // Draw max distance indicator when not moving
+    if (!game.isMoving && !game.won) {
+        const club = clubs[game.selectedClub];
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.arc(game.golfer.x, game.golfer.y, club.distance, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+    
+    // Draw club selector
+    drawClubSelector();
+    
     // Draw aim line and power meter when charging
     if (game.powerMeter.charging) {
         const dx = game.ball.x - mousePos.x;
@@ -353,13 +400,16 @@ function draw() {
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance > 0) {
-            // Aim line
+            const club = clubs[game.selectedClub];
+            const aimLineLength = club.distance; // Aim line shows max distance
+            
+            // Aim line (length based on club)
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
             ctx.moveTo(game.ball.x, game.ball.y);
-            ctx.lineTo(game.ball.x + (dx / distance) * 100, game.ball.y + (dy / distance) * 100);
+            ctx.lineTo(game.ball.x + (dx / distance) * aimLineLength, game.ball.y + (dy / distance) * aimLineLength);
             ctx.stroke();
             ctx.setLineDash([]);
             
@@ -454,6 +504,104 @@ function drawGolfer() {
         ctx.fillStyle = '#C0C0C0';
         ctx.fillRect(x - 6, y + 6, 3, 2);
     }
+}
+
+function drawClubSelector() {
+    const club = clubs[game.selectedClub];
+    const boxX = 10;
+    const boxY = canvas.height - 80;
+    const boxWidth = 120;
+    const boxHeight = 60;
+    
+    // Background box
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    
+    // Left arrow
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(boxX + 20, boxY + 30);
+    ctx.lineTo(boxX + 10, boxY + 30);
+    ctx.lineTo(boxX + 15, boxY + 25);
+    ctx.moveTo(boxX + 10, boxY + 30);
+    ctx.lineTo(boxX + 15, boxY + 35);
+    ctx.stroke();
+    
+    // Right arrow
+    ctx.beginPath();
+    ctx.moveTo(boxX + 110, boxY + 30);
+    ctx.lineTo(boxX + 120, boxY + 30);
+    ctx.lineTo(boxX + 115, boxY + 25);
+    ctx.moveTo(boxX + 120, boxY + 30);
+    ctx.lineTo(boxX + 115, boxY + 35);
+    ctx.stroke();
+    
+    // Draw club icon
+    const iconX = boxX + 60;
+    const iconY = boxY + 35;
+    
+    if (club.name === 'Putter') {
+        // Putter - flat head
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(iconX, iconY - 15);
+        ctx.lineTo(iconX, iconY);
+        ctx.stroke();
+        ctx.fillStyle = '#C0C0C0';
+        ctx.fillRect(iconX - 6, iconY, 12, 3);
+    } else if (club.name === 'Sand Wedge') {
+        // Sand wedge - angled head
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(iconX, iconY - 15);
+        ctx.lineTo(iconX, iconY);
+        ctx.stroke();
+        ctx.fillStyle = '#C0C0C0';
+        ctx.beginPath();
+        ctx.moveTo(iconX - 2, iconY);
+        ctx.lineTo(iconX + 8, iconY + 3);
+        ctx.lineTo(iconX + 8, iconY + 6);
+        ctx.lineTo(iconX - 2, iconY + 3);
+        ctx.fill();
+    } else if (club.name === '7 Iron') {
+        // 7 Iron - medium angled head
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(iconX, iconY - 15);
+        ctx.lineTo(iconX, iconY);
+        ctx.stroke();
+        ctx.fillStyle = '#C0C0C0';
+        ctx.beginPath();
+        ctx.moveTo(iconX - 3, iconY);
+        ctx.lineTo(iconX + 6, iconY + 2);
+        ctx.lineTo(iconX + 6, iconY + 5);
+        ctx.lineTo(iconX - 3, iconY + 3);
+        ctx.fill();
+    } else if (club.name === 'Driver') {
+        // Driver - large round head
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(iconX, iconY - 15);
+        ctx.lineTo(iconX, iconY - 3);
+        ctx.stroke();
+        ctx.fillStyle = '#C0C0C0';
+        ctx.beginPath();
+        ctx.arc(iconX + 3, iconY + 2, 6, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // Club name
+    ctx.fillStyle = '#fff';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(club.name, iconX, boxY + 55);
 }
 
 function updateUI() {
