@@ -124,11 +124,10 @@
                 <div class="course-name">Forest Glen</div>
                 <div class="course-par">Par 3</div>
             </div>
-            <div class="course-card locked">
+            <div class="course-card" onclick="startCourse(2)">
                 <div class="course-number">2</div>
-                <div class="course-name">Desert Dunes</div>
-                <div class="course-par">Par 4</div>
-                <div class="lock-icon">🔒</div>
+                <div class="course-name">Tropical Paradise</div>
+                <div class="course-par">Par 5</div>
             </div>
             <div class="course-card locked">
                 <div class="course-number">3</div>
@@ -166,10 +165,11 @@
     <script src="game.js"></script>
     <script>
         function startCourse(courseNumber) {
-            if (courseNumber === 1) {
+            if (courseNumber === 1 || courseNumber === 2) {
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('gameContainer').style.display = 'flex';
-                // Reset game state
+                // Load course and reset game
+                loadCourse(courseNumber);
                 resetGame();
             }
         }

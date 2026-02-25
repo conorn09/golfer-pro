@@ -20,7 +20,9 @@ const game = {
     won: false,
     golfer: { x: 100, y: 300, swinging: false, swingFrame: 0 },
     inAir: false,
-    selectedClub: 0
+    selectedClub: 0,
+    currentCourse: 1,
+    par: 3
 };
 
 // Club definitions
@@ -31,100 +33,14 @@ const clubs = [
     { name: 'Driver', maxPower: 20, distance: 250, loft: 0.7 }
 ];
 
-// Course obstacles
-const obstacles = {
-    sandTraps: [
-        { 
-            x: 300, y: 200, 
-            points: [
-                {x: 300, y: 215}, {x: 310, y: 205}, {x: 330, y: 200}, 
-                {x: 360, y: 202}, {x: 375, y: 210}, {x: 380, y: 230},
-                {x: 375, y: 255}, {x: 350, y: 260}, {x: 320, y: 258},
-                {x: 305, y: 245}, {x: 300, y: 225}
-            ]
-        },
-        { 
-            x: 500, y: 350,
-            points: [
-                {x: 500, y: 360}, {x: 515, y: 352}, {x: 540, y: 350},
-                {x: 565, y: 355}, {x: 570, y: 375}, {x: 560, y: 395},
-                {x: 535, y: 400}, {x: 510, y: 395}, {x: 500, y: 380}
-            ]
-        }
-    ],
-    trees: [
-        // Left side of fairway - varied distances from edge
-        { x: 35, y: 238, radius: 15 },
-        { x: 70, y: 225, radius: 15 },
-        { x: 90, y: 242, radius: 15 },
-        { x: 115, y: 230, radius: 15 },
-        { x: 145, y: 220, radius: 15 },
-        { x: 165, y: 235, radius: 15 },
-        { x: 195, y: 228, radius: 15 },
-        { x: 220, y: 240, radius: 15 },
-        { x: 245, y: 232, radius: 15 },
-        { x: 270, y: 225, radius: 15 },
-        // Skip 295-380 area (sand trap 1)
-        { x: 390, y: 235, radius: 15 },
-        { x: 415, y: 228, radius: 15 },
-        { x: 445, y: 240, radius: 15 },
-        { x: 470, y: 232, radius: 15 },
-        // Skip 490-570 area (sand trap 2 zone)
-        { x: 580, y: 238, radius: 15 },
-        { x: 610, y: 230, radius: 15 },
-        { x: 640, y: 242, radius: 15 },
-        { x: 665, y: 235, radius: 15 },
-        { x: 695, y: 228, radius: 15 },
-        { x: 720, y: 240, radius: 15 },
-        { x: 750, y: 232, radius: 15 },
-        { x: 780, y: 225, radius: 15 },
-        // Right side of fairway - varied distances from edge
-        { x: 35, y: 362, radius: 15 },
-        { x: 70, y: 375, radius: 15 },
-        { x: 90, y: 358, radius: 15 },
-        { x: 115, y: 370, radius: 15 },
-        { x: 145, y: 380, radius: 15 },
-        { x: 165, y: 365, radius: 15 },
-        { x: 195, y: 372, radius: 15 },
-        { x: 220, y: 360, radius: 15 },
-        { x: 245, y: 368, radius: 15 },
-        { x: 270, y: 375, radius: 15 },
-        { x: 295, y: 362, radius: 15 },
-        { x: 325, y: 370, radius: 15 },
-        // Skip 350-380 area (near sand trap 1)
-        { x: 390, y: 365, radius: 15 },
-        { x: 415, y: 372, radius: 15 },
-        { x: 445, y: 360, radius: 15 },
-        { x: 470, y: 368, radius: 15 },
-        // Skip 490-570 area (sand trap 2)
-        { x: 580, y: 362, radius: 15 },
-        { x: 610, y: 370, radius: 15 },
-        { x: 640, y: 358, radius: 15 },
-        { x: 665, y: 365, radius: 15 },
-        { x: 695, y: 372, radius: 15 },
-        { x: 720, y: 360, radius: 15 },
-        { x: 750, y: 368, radius: 15 },
-        { x: 780, y: 375, radius: 15 }
-    ],
-    slopes: [
-        { 
-            x: 400, y: 280, 
-            points: [
-                {x: 400, y: 290}, {x: 420, y: 280}, {x: 460, y: 280},
-                {x: 495, y: 285}, {x: 500, y: 310}, {x: 495, y: 350},
-                {x: 470, y: 360}, {x: 430, y: 360}, {x: 405, y: 350},
-                {x: 400, y: 320}
-            ],
-            direction: { x: 0, y: 0.3 } 
-        }
-    ]
-};
+// Course obstacles - will be loaded based on current course
+let obstacles = {};
 
 const FRICTION = 0.98;
 const SAND_FRICTION = 0.85;
 const MIN_VELOCITY = 0.1;
 const GRAVITY = 0.3;
-const GREEN_RADIUS = 80;
+let GREEN_RADIUS = 80;
 
 // Static texture patterns (generated once)
 const grassTexture = [];
@@ -148,17 +64,7 @@ for (let i = 0; i < 80; i++) {
         y: 300 + Math.sin(angle) * radius 
     });
 }
-// Sand trap textures
-for (let s = 0; s < 2; s++) {
-    for (let i = 0; i < 50; i++) {
-        sandTextures[s].push({ 
-            x: obstacles.sandTraps[s].x + Math.random() * 80, 
-            y: obstacles.sandTraps[s].y + Math.random() * 60,
-            size: Math.random() > 0.7 ? 1 : 2,
-            color: Math.random() > 0.5 ? '#D4C090' : '#F0E4B0'
-        });
-    }
-}
+
 // Fallen leaves scattered around
 for (let i = 0; i < 60; i++) {
     fallenLeaves.push({
@@ -361,6 +267,7 @@ function update() {
         if (!game.inAir) {
             // Check if ball is in sand trap
             let inSand = false;
+            if (obstacles.sandTraps) {
             for (const sand of obstacles.sandTraps) {
                 // Check if point is inside polygon
                 let inside = false;
@@ -376,8 +283,10 @@ function update() {
                     break;
                 }
             }
+            }
             
             // Check if ball is on slope
+            if (obstacles.slopes) {
             for (const slope of obstacles.slopes) {
                 // Check if point is inside polygon
                 let inside = false;
@@ -393,6 +302,7 @@ function update() {
                     game.ball.vy += slope.direction.y;
                 }
             }
+            }
             
             // Apply friction (more in sand)
             const currentFriction = inSand ? SAND_FRICTION : FRICTION;
@@ -400,6 +310,7 @@ function update() {
             game.ball.vy *= currentFriction;
             
             // Check tree collisions (only when on ground)
+            if (obstacles.trees) {
             for (const tree of obstacles.trees) {
                 const dx = game.ball.x - tree.x;
                 const dy = game.ball.y - tree.y;
@@ -413,6 +324,7 @@ function update() {
                     game.ball.x = tree.x + Math.cos(angle) * (tree.radius + game.ball.radius);
                     game.ball.y = tree.y + Math.sin(angle) * (tree.radius + game.ball.radius);
                 }
+            }
             }
         }
         
@@ -480,6 +392,7 @@ function draw() {
     }
     
     // Draw slopes with textured appearance
+    if (obstacles.slopes) {
     for (const slope of obstacles.slopes) {
         // Base slope color with gradient effect
         ctx.fillStyle = '#5a9c3c';
@@ -520,8 +433,10 @@ function draw() {
             ctx.fillRect(px, py, 1, 1);
         }
     }
+    }
     
     // Draw sand traps with organic shapes
+    if (obstacles.sandTraps && obstacles.sandTraps.length > 0) {
     for (let s = 0; s < obstacles.sandTraps.length; s++) {
         const sand = obstacles.sandTraps[s];
         
@@ -541,10 +456,13 @@ function draw() {
         ctx.stroke();
         
         // Static sand texture
+        if (sandTextures[s]) {
         for (const grain of sandTextures[s]) {
             ctx.fillStyle = grain.color;
             ctx.fillRect(grain.x, grain.y, grain.size, grain.size);
         }
+        }
+    }
     }
     
     // Draw tee box
@@ -562,9 +480,18 @@ function draw() {
     
     // Draw green (before trees so trees can overlap it)
     ctx.fillStyle = '#3a6c2c';
-    ctx.beginPath();
-    ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
+    
+    if (game.currentCourse === 2) {
+        // Narrow elongated green for tropical course
+        ctx.beginPath();
+        ctx.ellipse(game.hole.x, game.hole.y, GREEN_RADIUS * 2, GREEN_RADIUS, 0, 0, Math.PI * 2);
+        ctx.fill();
+    } else {
+        // Circular green for other courses
+        ctx.beginPath();
+        ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+    }
     
     // Add static green texture with circular mowing pattern
     ctx.fillStyle = '#2a5c1c';
@@ -592,10 +519,90 @@ function draw() {
         ctx.fillRect(leaf.x + 1, leaf.y + 1, 1, 1);
     }
     
+    // Draw water hazards (for tropical course)
+    if (obstacles.waterHazards && obstacles.waterHazards.length > 0) {
+        for (const water of obstacles.waterHazards) {
+            // Water color
+            ctx.fillStyle = '#4A90E2';
+            ctx.beginPath();
+            ctx.moveTo(water.points[0].x, water.points[0].y);
+            for (let i = 1; i < water.points.length; i++) {
+                ctx.lineTo(water.points[i].x, water.points[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            
+            // Darker water edge
+            ctx.strokeStyle = '#2E5C8A';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Water ripples/texture
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            for (let i = 0; i < 15; i++) {
+                const rx = water.points[0].x + Math.random() * 80;
+                const ry = water.points[0].y + Math.random() * 200;
+                ctx.fillRect(rx, ry, 2, 1);
+            }
+        }
+    }
+    
     // Draw trees with pixel art style (after green so they appear in front)
+    if (obstacles.trees) {
     for (const tree of obstacles.trees) {
         const tx = tree.x;
         const ty = tree.y;
+        
+        if (tree.type === 'palm') {
+            // Draw palm tree
+            // Shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.beginPath();
+            ctx.ellipse(tx + 2, ty + 10, 12, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Trunk - brown and curved
+            ctx.fillStyle = '#8B6F47';
+            ctx.fillRect(tx - 3, ty - 20, 6, 30);
+            ctx.fillStyle = '#A0826D';
+            ctx.fillRect(tx - 2, ty - 20, 3, 30);
+            
+            // Trunk segments
+            ctx.fillStyle = '#6B4F27';
+            for (let i = 0; i < 4; i++) {
+                ctx.fillRect(tx - 3, ty - 18 + i * 7, 6, 2);
+            }
+            
+            // Palm fronds (leaves)
+            ctx.fillStyle = '#2d5016';
+            // Top frond
+            ctx.beginPath();
+            ctx.ellipse(tx, ty - 28, 20, 8, -Math.PI / 6, 0, Math.PI * 2);
+            ctx.fill();
+            // Left frond
+            ctx.beginPath();
+            ctx.ellipse(tx - 15, ty - 22, 18, 7, -Math.PI / 3, 0, Math.PI * 2);
+            ctx.fill();
+            // Right frond
+            ctx.beginPath();
+            ctx.ellipse(tx + 15, ty - 22, 18, 7, Math.PI / 3, 0, Math.PI * 2);
+            ctx.fill();
+            // Back fronds
+            ctx.fillStyle = '#1d4010';
+            ctx.beginPath();
+            ctx.ellipse(tx - 10, ty - 25, 16, 6, -Math.PI / 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(tx + 10, ty - 25, 16, 6, Math.PI / 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Bright highlights on fronds
+            ctx.fillStyle = '#4a7c2c';
+            ctx.fillRect(tx - 2, ty - 29, 4, 3);
+            ctx.fillRect(tx - 16, ty - 23, 4, 2);
+            ctx.fillRect(tx + 13, ty - 23, 4, 2);
+        } else {
+            // Draw regular forest tree
         
         // Tree shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
@@ -684,6 +691,8 @@ function draw() {
         ctx.fillRect(tx + 6, ty - 21, 2, 2);
         ctx.fillRect(tx - 2, ty - 17, 2, 2);
         ctx.fillRect(tx + 1, ty - 23, 2, 2);
+        }
+    }
     }
     
     // Draw hole
@@ -1008,7 +1017,7 @@ function updateUI() {
     const status = document.getElementById('status');
     
     if (game.won) {
-        const par = 3;
+        const par = game.par;
         const diff = game.strokes - par;
         let message = '';
         if (diff === -2) message = 'Eagle! 🦅';
@@ -1027,7 +1036,7 @@ function updateUI() {
             (game.ball.y - game.hole.y) ** 2
         );
         const onGreen = distToHole < GREEN_RADIUS;
-        status.textContent = onGreen ? 'On the green - Click to putt' : 'Click and hold to set power';
+        status.textContent = onGreen ? 'On the green - Click to putt' : 'Hover to aim';
     }
 }
 
@@ -1037,16 +1046,188 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
+// Load course function
+function loadCourse(courseNumber) {
+    game.currentCourse = courseNumber;
+    
+    // Clear sand textures
+    sandTextures.length = 0;
+    
+    if (courseNumber === 1) {
+        // Forest Glen - Par 3
+        game.par = 3;
+        game.tee = { x: 100, y: 300 };
+        game.hole = { x: 700, y: 300 };
+        GREEN_RADIUS = 80;
+        
+        obstacles.sandTraps = [
+            { 
+                x: 300, y: 200, 
+                points: [
+                    {x: 300, y: 215}, {x: 310, y: 205}, {x: 330, y: 200}, 
+                    {x: 360, y: 202}, {x: 375, y: 210}, {x: 380, y: 230},
+                    {x: 375, y: 255}, {x: 350, y: 260}, {x: 320, y: 258},
+                    {x: 305, y: 245}, {x: 300, y: 225}
+                ]
+            },
+            { 
+                x: 500, y: 350,
+                points: [
+                    {x: 500, y: 360}, {x: 515, y: 352}, {x: 540, y: 350},
+                    {x: 565, y: 355}, {x: 570, y: 375}, {x: 560, y: 395},
+                    {x: 535, y: 400}, {x: 510, y: 395}, {x: 500, y: 380}
+                ]
+            }
+        ];
+        
+        // Generate sand textures
+        for (let s = 0; s < obstacles.sandTraps.length; s++) {
+            sandTextures[s] = [];
+            for (let i = 0; i < 50; i++) {
+                sandTextures[s].push({ 
+                    x: obstacles.sandTraps[s].x + Math.random() * 80, 
+                    y: obstacles.sandTraps[s].y + Math.random() * 60,
+                    size: Math.random() > 0.7 ? 1 : 2,
+                    color: Math.random() > 0.5 ? '#D4C090' : '#F0E4B0'
+                });
+            }
+        }
+        
+        obstacles.waterHazards = [];
+        
+        obstacles.trees = [
+            { x: 35, y: 238, radius: 15, type: 'forest' },
+            { x: 70, y: 225, radius: 15, type: 'forest' },
+            { x: 90, y: 242, radius: 15, type: 'forest' },
+            { x: 115, y: 230, radius: 15, type: 'forest' },
+            { x: 145, y: 220, radius: 15, type: 'forest' },
+            { x: 165, y: 235, radius: 15, type: 'forest' },
+            { x: 195, y: 228, radius: 15, type: 'forest' },
+            { x: 220, y: 240, radius: 15, type: 'forest' },
+            { x: 245, y: 232, radius: 15, type: 'forest' },
+            { x: 270, y: 225, radius: 15, type: 'forest' },
+            { x: 390, y: 235, radius: 15, type: 'forest' },
+            { x: 415, y: 228, radius: 15, type: 'forest' },
+            { x: 445, y: 240, radius: 15, type: 'forest' },
+            { x: 470, y: 232, radius: 15, type: 'forest' },
+            { x: 580, y: 238, radius: 15, type: 'forest' },
+            { x: 610, y: 230, radius: 15, type: 'forest' },
+            { x: 640, y: 242, radius: 15, type: 'forest' },
+            { x: 665, y: 235, radius: 15, type: 'forest' },
+            { x: 695, y: 228, radius: 15, type: 'forest' },
+            { x: 720, y: 240, radius: 15, type: 'forest' },
+            { x: 750, y: 232, radius: 15, type: 'forest' },
+            { x: 780, y: 225, radius: 15, type: 'forest' },
+            { x: 35, y: 362, radius: 15, type: 'forest' },
+            { x: 70, y: 375, radius: 15, type: 'forest' },
+            { x: 90, y: 358, radius: 15, type: 'forest' },
+            { x: 115, y: 370, radius: 15, type: 'forest' },
+            { x: 145, y: 380, radius: 15, type: 'forest' },
+            { x: 165, y: 365, radius: 15, type: 'forest' },
+            { x: 195, y: 372, radius: 15, type: 'forest' },
+            { x: 220, y: 360, radius: 15, type: 'forest' },
+            { x: 245, y: 368, radius: 15, type: 'forest' },
+            { x: 270, y: 375, radius: 15, type: 'forest' },
+            { x: 295, y: 362, radius: 15, type: 'forest' },
+            { x: 325, y: 370, radius: 15, type: 'forest' },
+            { x: 390, y: 365, radius: 15, type: 'forest' },
+            { x: 415, y: 372, radius: 15, type: 'forest' },
+            { x: 445, y: 360, radius: 15, type: 'forest' },
+            { x: 470, y: 368, radius: 15, type: 'forest' },
+            { x: 580, y: 362, radius: 15, type: 'forest' },
+            { x: 610, y: 370, radius: 15, type: 'forest' },
+            { x: 640, y: 358, radius: 15, type: 'forest' },
+            { x: 665, y: 365, radius: 15, type: 'forest' },
+            { x: 695, y: 372, radius: 15, type: 'forest' },
+            { x: 720, y: 360, radius: 15, type: 'forest' },
+            { x: 750, y: 368, radius: 15, type: 'forest' },
+            { x: 780, y: 375, radius: 15, type: 'forest' }
+        ];
+        
+        obstacles.slopes = [
+            { 
+                x: 400, y: 280, 
+                points: [
+                    {x: 400, y: 290}, {x: 420, y: 280}, {x: 460, y: 280},
+                    {x: 495, y: 285}, {x: 500, y: 310}, {x: 495, y: 350},
+                    {x: 470, y: 360}, {x: 430, y: 360}, {x: 405, y: 350},
+                    {x: 400, y: 320}
+                ],
+                direction: { x: 0, y: 0.3 } 
+            }
+        ];
+    }
+    else if (courseNumber === 2) {
+        // Tropical Paradise - Par 5
+        game.par = 5;
+        game.tee = { x: 100, y: 300 };
+        game.hole = { x: 750, y: 300 };
+        GREEN_RADIUS = 40; // Narrow green
+        
+        obstacles.sandTraps = [];
+        
+        // River running through middle
+        obstacles.waterHazards = [
+            {
+                points: [
+                    {x: 350, y: 200}, {x: 380, y: 210}, {x: 400, y: 240},
+                    {x: 410, y: 280}, {x: 420, y: 320}, {x: 430, y: 360},
+                    {x: 440, y: 400}, {x: 420, y: 420}, {x: 390, y: 410},
+                    {x: 370, y: 380}, {x: 360, y: 340}, {x: 350, y: 300},
+                    {x: 340, y: 260}, {x: 330, y: 220}
+                ]
+            }
+        ];
+        
+        // Palm trees
+        obstacles.trees = [
+            { x: 50, y: 240, radius: 18, type: 'palm' },
+            { x: 90, y: 230, radius: 18, type: 'palm' },
+            { x: 130, y: 235, radius: 18, type: 'palm' },
+            { x: 170, y: 228, radius: 18, type: 'palm' },
+            { x: 210, y: 240, radius: 18, type: 'palm' },
+            { x: 250, y: 232, radius: 18, type: 'palm' },
+            { x: 290, y: 225, radius: 18, type: 'palm' },
+            { x: 480, y: 230, radius: 18, type: 'palm' },
+            { x: 520, y: 238, radius: 18, type: 'palm' },
+            { x: 560, y: 232, radius: 18, type: 'palm' },
+            { x: 600, y: 240, radius: 18, type: 'palm' },
+            { x: 640, y: 228, radius: 18, type: 'palm' },
+            { x: 680, y: 235, radius: 18, type: 'palm' },
+            { x: 720, y: 230, radius: 18, type: 'palm' },
+            { x: 50, y: 360, radius: 18, type: 'palm' },
+            { x: 90, y: 370, radius: 18, type: 'palm' },
+            { x: 130, y: 365, radius: 18, type: 'palm' },
+            { x: 170, y: 372, radius: 18, type: 'palm' },
+            { x: 210, y: 360, radius: 18, type: 'palm' },
+            { x: 250, y: 368, radius: 18, type: 'palm' },
+            { x: 290, y: 375, radius: 18, type: 'palm' },
+            { x: 480, y: 370, radius: 18, type: 'palm' },
+            { x: 520, y: 362, radius: 18, type: 'palm' },
+            { x: 560, y: 368, radius: 18, type: 'palm' },
+            { x: 600, y: 360, radius: 18, type: 'palm' },
+            { x: 640, y: 372, radius: 18, type: 'palm' },
+            { x: 680, y: 365, radius: 18, type: 'palm' },
+            { x: 720, y: 370, radius: 18, type: 'palm' }
+        ];
+        
+        obstacles.slopes = [];
+    }
+    
+    // Update info display
+    document.getElementById('info').innerHTML = `Par ${game.par} | Strokes: <span id="strokes">0</span> | <span id="status">Hover to aim</span>`;
+}
+
 // Reset game function
 function resetGame() {
-    game.ball.x = 100;
-    game.ball.y = 300;
+    game.ball.x = game.tee.x;
+    game.ball.y = game.tee.y;
     game.ball.vx = 0;
     game.ball.vy = 0;
     game.ball.z = 0;
     game.ball.vz = 0;
-    game.golfer.x = 100;
-    game.golfer.y = 300;
+    game.golfer.x = game.tee.x;
+    game.golfer.y = game.tee.y;
     game.golfer.swinging = false;
     game.golfer.swingFrame = 0;
     game.powerMeter.active = false;
@@ -1062,4 +1243,5 @@ function resetGame() {
 }
 
 // Start game
+loadCourse(1); // Load default course
 gameLoop();
