@@ -212,12 +212,29 @@ canvas.addEventListener('mousedown', (e) => {
 
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    mousePos.x = e.clientX - rect.left;
-    mousePos.y = e.clientY - rect.top;
+    const rawX = e.clientX - rect.left;
+    const rawY = e.clientY - rect.top;
     
-    // Enable aiming mode when mouse is over canvas and not in power meter mode
+    // Limit mouse position based on club distance
     if (!game.isMoving && !game.won && !game.powerMeter.active) {
+        const club = clubs[game.selectedClub];
+        const dx = rawX - game.ball.x;
+        const dy = rawY - game.ball.y;
+        const distanceToMouse = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distanceToMouse > club.distance) {
+            // Clamp to max club distance
+            const angle = Math.atan2(dy, dx);
+            mousePos.x = game.ball.x + Math.cos(angle) * club.distance;
+            mousePos.y = game.ball.y + Math.sin(angle) * club.distance;
+        } else {
+            mousePos.x = rawX;
+            mousePos.y = rawY;
+        }
         aimingMode = true;
+    } else {
+        mousePos.x = rawX;
+        mousePos.y = rawY;
     }
 });
 
