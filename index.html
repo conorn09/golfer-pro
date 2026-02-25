@@ -7,13 +7,87 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
+            min-height: 100vh;
             background-color: #2d5016;
             font-family: monospace;
             color: white;
+        }
+        #menu {
+            text-align: center;
+            padding: 40px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            border: 4px solid #4a7c2c;
+        }
+        #menu h1 {
+            font-size: 48px;
+            margin: 0 0 20px 0;
+            color: #6aac4c;
+            text-shadow: 3px 3px 0px #1a3010;
+        }
+        #menu h2 {
+            font-size: 24px;
+            margin: 30px 0 20px 0;
+            color: #5a9c3c;
+        }
+        .course-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .course-card {
+            background-color: #3a6c1c;
+            border: 3px solid #4a7c2c;
+            border-radius: 8px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 150px;
+        }
+        .course-card:hover {
+            background-color: #4a7c2c;
+            border-color: #6aac4c;
+            transform: scale(1.05);
+        }
+        .course-card.locked {
+            background-color: #2d4016;
+            border-color: #3a5020;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        .course-card.locked:hover {
+            transform: none;
+            background-color: #2d4016;
+        }
+        .course-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #FFFF00;
+            margin-bottom: 10px;
+        }
+        .course-name {
+            font-size: 18px;
+            color: white;
+            margin-bottom: 5px;
+        }
+        .course-par {
+            font-size: 14px;
+            color: #ccc;
+        }
+        .lock-icon {
+            font-size: 24px;
+            margin-top: 10px;
+        }
+        #gameContainer {
+            display: none;
+            flex-direction: column;
+            align-items: center;
         }
         canvas {
             border: 4px solid #1a3010;
@@ -24,11 +98,88 @@
             margin-top: 10px;
             font-size: 18px;
         }
+        #backButton {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-family: monospace;
+            background-color: #4a7c2c;
+            color: white;
+            border: 2px solid #6aac4c;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #backButton:hover {
+            background-color: #5a9c3c;
+        }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <div id="info">Par 3 | Strokes: <span id="strokes">0</span> | <span id="status">Click and hold to set power</span></div>
+    <div id="menu">
+        <h1>⛳ PIXEL GOLF ⛳</h1>
+        <h2>Select a Course</h2>
+        <div class="course-grid">
+            <div class="course-card" onclick="startCourse(1)">
+                <div class="course-number">1</div>
+                <div class="course-name">Forest Glen</div>
+                <div class="course-par">Par 3</div>
+            </div>
+            <div class="course-card locked">
+                <div class="course-number">2</div>
+                <div class="course-name">Desert Dunes</div>
+                <div class="course-par">Par 4</div>
+                <div class="lock-icon">🔒</div>
+            </div>
+            <div class="course-card locked">
+                <div class="course-number">3</div>
+                <div class="course-name">Ocean View</div>
+                <div class="course-par">Par 5</div>
+                <div class="lock-icon">🔒</div>
+            </div>
+            <div class="course-card locked">
+                <div class="course-number">4</div>
+                <div class="course-name">Mountain Peak</div>
+                <div class="course-par">Par 4</div>
+                <div class="lock-icon">🔒</div>
+            </div>
+            <div class="course-card locked">
+                <div class="course-number">5</div>
+                <div class="course-name">Sunset Valley</div>
+                <div class="course-par">Par 3</div>
+                <div class="lock-icon">🔒</div>
+            </div>
+            <div class="course-card locked">
+                <div class="course-number">6</div>
+                <div class="course-name">Island Paradise</div>
+                <div class="course-par">Par 5</div>
+                <div class="lock-icon">🔒</div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="info">Par 3 | Strokes: <span id="strokes">0</span> | <span id="status">Hover to aim</span></div>
+        <button id="backButton" onclick="backToMenu()">Back to Menu</button>
+    </div>
+    
     <script src="game.js"></script>
+    <script>
+        function startCourse(courseNumber) {
+            if (courseNumber === 1) {
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('gameContainer').style.display = 'flex';
+                // Reset game state
+                resetGame();
+            }
+        }
+        
+        function backToMenu() {
+            document.getElementById('menu').style.display = 'block';
+            document.getElementById('gameContainer').style.display = 'none';
+            // Reset game state
+            resetGame();
+        }
+    </script>
 </body>
 </html>

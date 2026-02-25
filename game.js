@@ -1037,5 +1037,29 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
+// Reset game function
+function resetGame() {
+    game.ball.x = 100;
+    game.ball.y = 300;
+    game.ball.vx = 0;
+    game.ball.vy = 0;
+    game.ball.z = 0;
+    game.ball.vz = 0;
+    game.golfer.x = 100;
+    game.golfer.y = 300;
+    game.golfer.swinging = false;
+    game.golfer.swingFrame = 0;
+    game.powerMeter.active = false;
+    game.powerMeter.position = 0;
+    game.targetPos.set = false;
+    game.strokes = 0;
+    game.isMoving = false;
+    game.won = false;
+    game.inAir = false;
+    game.selectedClub = 0;
+    aimingMode = false;
+    updateUI();
+}
+
 // Start game
 gameLoop();
