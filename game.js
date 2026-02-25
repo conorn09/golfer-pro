@@ -22,7 +22,8 @@ const game = {
     inAir: false,
     selectedClub: 0,
     currentCourse: 1,
-    par: 3
+    par: 3,
+    camera: { x: 0, y: 0 }
 };
 
 // Club definitions
@@ -41,6 +42,9 @@ const SAND_FRICTION = 0.85;
 const MIN_VELOCITY = 0.1;
 const GRAVITY = 0.3;
 let GREEN_RADIUS = 80;
+const ZOOM = 2; // 2x zoom
+const WORLD_WIDTH = 800;
+const WORLD_HEIGHT = 600;
 
 // Static texture patterns (generated once)
 const grassTexture = [];
@@ -82,16 +86,20 @@ let aimingMode = false; // Track if we're in aiming mode (before power meter)
 canvas.addEventListener('mousedown', (e) => {
     if (!game.isMoving && !game.won) {
         const rect = canvas.getBoundingClientRect();
-        mousePos.x = e.clientX - rect.left;
-        mousePos.y = e.clientY - rect.top;
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
         
-        // Check if clicking club selector arrows
-        if (mousePos.y > canvas.height - 80 && mousePos.y < canvas.height - 20) {
-            if (mousePos.x > 10 && mousePos.x < 30) {
+        // Convert screen coordinates to world coordinates
+        mousePos.x = (screenX / ZOOM) + game.camera.x;
+        mousePos.y = (screenY / ZOOM) + game.camera.y;
+        
+        // Check if clicking club selector arrows (in screen space)
+        if (screenY > canvas.height - 80 && screenY < canvas.height - 20) {
+            if (screenX > 10 && screenX < 30) {
                 // Left arrow
                 game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
                 return;
-            } else if (mousePos.x > 110 && mousePos.x < 130) {
+            } else if (screenX > 110 && screenX < 130) {
                 // Right arrow
                 game.selectedClub = (game.selectedClub + 1) % clubs.length;
                 return;
@@ -118,8 +126,12 @@ canvas.addEventListener('mousedown', (e) => {
 
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const rawX = e.clientX - rect.left;
-    const rawY = e.clientY - rect.top;
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    // Convert screen coordinates to world coordinates
+    const rawX = (screenX / ZOOM) + game.camera.x;
+    const rawY = (screenY / ZOOM) + game.camera.y;
     
     // Limit mouse position based on club distance
     if (!game.isMoving && !game.won && !game.powerMeter.active) {
@@ -221,6 +233,14 @@ function shoot() {
 }
 
 function update() {
+    // Update camera to follow ball
+    game.camera.x = game.ball.x - (canvas.width / ZOOM) / 2;
+    game.camera.y = game.ball.y - (canvas.height / ZOOM) / 2;
+    
+    // Clamp camera to world bounds
+    game.camera.x = Math.max(0, Math.min(WORLD_WIDTH - canvas.width / ZOOM, game.camera.x));
+    game.camera.y = Math.max(0, Math.min(WORLD_HEIGHT - canvas.height / ZOOM, game.camera.y));
+    
     // Update power meter
     if (game.powerMeter.active) {
         game.powerMeter.position += game.powerMeter.speed;
@@ -367,6 +387,11 @@ function draw() {
     // Clear canvas
     ctx.fillStyle = '#4a7c2c';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Save context and apply camera transform
+    ctx.save();
+    ctx.scale(ZOOM, ZOOM);
+    ctx.translate(-game.camera.x, -game.camera.y);
     
     // Add static grass texture to background (rough)
     ctx.fillStyle = '#3a6c1c';
@@ -747,8 +772,16 @@ function draw() {
         drawGolfer();
     }
     
+    // Restore context for UI elements (drawn in screen space)
+    ctx.restore();
+    
     // Draw club selector
     drawClubSelector();
+    
+    // Draw aiming preview and target indicators in world space
+    ctx.save();
+    ctx.scale(ZOOM, ZOOM);
+    ctx.translate(-game.camera.x, -game.camera.y);
     
     // Draw aiming preview (when hovering, before clicking)
     if (aimingMode && !game.powerMeter.active) {
@@ -805,6 +838,9 @@ function draw() {
         ctx.lineTo(game.targetPos.x, game.targetPos.y + 12);
         ctx.stroke();
     }
+    
+    // Restore context after world space drawing
+    ctx.restore();
     
     // Draw power meter bar
     if (game.powerMeter.active) {
