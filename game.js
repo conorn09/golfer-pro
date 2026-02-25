@@ -426,8 +426,22 @@ function update() {
                     if (intersect) inside = !inside;
                 }
                 if (inside) {
-                    game.ball.vx += slope.direction.x;
-                    game.ball.vy += slope.direction.y;
+                    // Calculate position on slope (0 = top, 1 = bottom)
+                    const slopeTop = slope.points[0].y;
+                    const slopeBottom = slope.points[6].y;
+                    const positionOnSlope = (game.ball.y - slopeTop) / (slopeBottom - slopeTop);
+                    
+                    // Gentle acceleration down the slope
+                    const baseAccel = 0.08;
+                    game.ball.vx += slope.direction.x * baseAccel;
+                    game.ball.vy += slope.direction.y * baseAccel;
+                    
+                    // Extra friction at bottom of slope to slow down and stop
+                    if (positionOnSlope > 0.7) { // Bottom 30% of slope
+                        const bottomFriction = 0.85; // Strong friction at bottom
+                        game.ball.vx *= bottomFriction;
+                        game.ball.vy *= bottomFriction;
+                    }
                 }
             }
             }
@@ -527,11 +541,28 @@ function draw() {
         }
     }
     
-    // Draw slopes with textured appearance
+    // Draw slopes as simple slanted decline
     if (obstacles.slopes) {
     for (const slope of obstacles.slopes) {
-        // Base slope color with gradient effect
-        ctx.fillStyle = '#5a9c3c';
+        // Shadow at bottom for depth
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        ctx.beginPath();
+        ctx.ellipse(
+            (slope.points[0].x + slope.points[6].x) / 2 + 3,
+            slope.points[6].y + 3,
+            48, 12, 0, 0, Math.PI * 2
+        );
+        ctx.fill();
+        
+        // Base slope - gradient from top to bottom
+        const gradient = ctx.createLinearGradient(
+            slope.points[0].x + 50, slope.points[0].y,
+            slope.points[0].x + 50, slope.points[6].y
+        );
+        gradient.addColorStop(0, '#6aac4c'); // Lighter at top
+        gradient.addColorStop(1, '#4a7c2c'); // Darker at bottom
+        
+        ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.moveTo(slope.points[0].x, slope.points[0].y);
         for (let i = 1; i < slope.points.length; i++) {
@@ -540,33 +571,27 @@ function draw() {
         ctx.closePath();
         ctx.fill();
         
-        // Add darker shading on one side
-        ctx.fillStyle = 'rgba(58, 124, 44, 0.3)';
+        // Highlight on top edge (crest of slope)
+        ctx.fillStyle = 'rgba(140, 200, 100, 0.3)';
         ctx.beginPath();
         ctx.moveTo(slope.points[0].x, slope.points[0].y);
         ctx.lineTo(slope.points[1].x, slope.points[1].y);
         ctx.lineTo(slope.points[2].x, slope.points[2].y);
-        ctx.lineTo(slope.points[0].x + 20, slope.points[0].y + 20);
+        ctx.lineTo(slope.points[3].x, slope.points[3].y);
+        ctx.lineTo(slope.points[3].x, slope.points[3].y + 10);
+        ctx.lineTo(slope.points[0].x, slope.points[0].y + 10);
         ctx.closePath();
         ctx.fill();
         
-        // Contour lines for elevation
-        ctx.strokeStyle = 'rgba(74, 140, 44, 0.4)';
+        // Simple horizontal contour lines
+        ctx.strokeStyle = 'rgba(60, 100, 40, 0.4)';
         ctx.lineWidth = 1;
         for (let i = 0; i < 6; i++) {
+            const y = slope.points[0].y + 15 + i * 10;
             ctx.beginPath();
-            const offset = i * 12;
-            ctx.moveTo(slope.points[0].x + 10, slope.points[0].y + offset);
-            ctx.lineTo(slope.points[3].x - 10, slope.points[3].y + offset - 5);
+            ctx.moveTo(slope.points[0].x + 5, y);
+            ctx.lineTo(slope.points[3].x - 5, y);
             ctx.stroke();
-        }
-        
-        // Add texture dots
-        ctx.fillStyle = '#4a8c2c';
-        for (let i = 0; i < 30; i++) {
-            const px = slope.points[0].x + Math.random() * 90;
-            const py = slope.points[0].y + Math.random() * 70;
-            ctx.fillRect(px, py, 1, 1);
         }
     }
     }
@@ -1547,7 +1572,7 @@ function loadCourse(courseNumber) {
                     {x: 470, y: 360}, {x: 430, y: 360}, {x: 405, y: 350},
                     {x: 400, y: 320}
                 ],
-                direction: { x: 0, y: 0.3 } 
+                direction: { x: 0, y: 1 } // Direction vector (will be scaled by slopeStrength)
             }
         ];
     }
