@@ -24,7 +24,15 @@ const game = {
     currentCourse: 1,
     par: 3,
     camera: { x: 0, y: 0 },
-    flagWave: 0 // For flag animation
+    flagWave: 0, // For flag animation
+    windSway: 0, // For tree sway animation
+    leafSpawnTimer: 0, // Timer for spawning new falling leaves
+    windGust: { // Realistic wind gusts
+        strength: 0,
+        direction: 0,
+        phase: 0,
+        nextGustTimer: 0
+    }
 };
 
 // Club definitions
@@ -53,6 +61,7 @@ const fairwayTexture = [];
 const greenTexture = [];
 const sandTextures = [[], []];
 const fallenLeaves = [];
+const fallingLeaves = []; // Animated falling leaves
 
 // Generate static textures
 for (let i = 0; i < 400; i++) {
@@ -76,7 +85,8 @@ for (let i = 0; i < 60; i++) {
         x: Math.random() * 800,
         y: Math.random() * 600,
         color: Math.random() > 0.5 ? '#8B4513' : (Math.random() > 0.5 ? '#A0522D' : '#CD853F'),
-        size: Math.random() > 0.5 ? 2 : 3
+        size: Math.random() > 0.5 ? 2 : 3,
+        rotation: Math.random() * Math.PI * 2
     });
 }
 
@@ -244,6 +254,84 @@ function update() {
     
     // Update flag wave animation
     game.flagWave += 0.1;
+    
+    // Update realistic wind system
+    game.windSway += 0.02;
+    
+    // Wind gust system - creates waves of wind that travel across the course
+    game.windGust.nextGustTimer--;
+    if (game.windGust.nextGustTimer <= 0) {
+        // Start a new gust
+        game.windGust.strength = 0.5 + Math.random() * 1.5; // Random strength
+        game.windGust.direction = Math.random() * Math.PI * 2; // Random direction
+        game.windGust.phase = 0;
+        game.windGust.nextGustTimer = 120 + Math.random() * 180; // Next gust in 2-5 seconds
+    }
+    
+    // Update gust phase (travels across course)
+    if (game.windGust.phase < Math.PI * 2) {
+        game.windGust.phase += 0.03;
+    }
+    
+    // Update falling leaves (only for forest course) - 2x more
+    if (game.currentCourse === 1) {
+        // Spawn new leaves much more frequently - 4x total increase from original
+        game.leafSpawnTimer++;
+        if (game.leafSpawnTimer > 8 && fallingLeaves.length < 100) { // Spawn every ~0.13 seconds, max 100 leaves (4x original)
+            game.leafSpawnTimer = 0;
+            if (Math.random() > 0.1 && obstacles.trees) { // 90% chance
+                // Pick a random tree
+                const tree = obstacles.trees[Math.floor(Math.random() * obstacles.trees.length)];
+                if (tree.type === 'forest') {
+                    // Leaves are affected by wind when spawned
+                    const windEffect = Math.cos(game.windGust.direction) * game.windGust.strength * 0.3;
+                    fallingLeaves.push({
+                        x: tree.x + (Math.random() - 0.5) * 20,
+                        y: tree.y - 20 + (Math.random() - 0.5) * 10,
+                        vx: (Math.random() - 0.5) * 0.8 + windEffect,
+                        vy: 0.2 + Math.random() * 0.4,
+                        rotation: Math.random() * Math.PI * 2,
+                        rotationSpeed: (Math.random() - 0.5) * 0.3,
+                        color: Math.random() > 0.5 ? '#8B4513' : (Math.random() > 0.5 ? '#A0522D' : '#CD853F'),
+                        size: 2 + Math.random() * 1.5,
+                        landed: false
+                    });
+                }
+            }
+        }
+        
+        // Update falling leaves
+        for (let i = fallingLeaves.length - 1; i >= 0; i--) {
+            const leaf = fallingLeaves[i];
+            
+            if (!leaf.landed) {
+                leaf.x += leaf.vx;
+                leaf.y += leaf.vy;
+                leaf.rotation += leaf.rotationSpeed;
+                
+                // Add wind effect to falling leaves
+                const windPush = Math.cos(game.windGust.direction) * game.windGust.strength * 0.05;
+                leaf.vx += windPush + (Math.random() - 0.5) * 0.08;
+                leaf.vx *= 0.98; // Damping
+                
+                // Check if leaf has landed on the ground (fairway area)
+                if (leaf.y >= 250 && leaf.y <= 350 && leaf.x >= 50 && leaf.x <= 750) {
+                    // Leaf lands on fairway
+                    leaf.landed = true;
+                    leaf.landedTime = 0;
+                } else if (leaf.y > 600 || leaf.x < 0 || leaf.x > 800) {
+                    // Remove if completely off screen
+                    fallingLeaves.splice(i, 1);
+                }
+            } else {
+                // Leaf is on ground, keep it there for a while
+                leaf.landedTime++;
+                if (leaf.landedTime > 300) { // Stay for ~5 seconds
+                    fallingLeaves.splice(i, 1);
+                }
+            }
+        }
+    }
     
     // Update power meter
     if (game.powerMeter.active) {
@@ -634,7 +722,28 @@ function draw() {
             ctx.fillRect(tx - 16, ty - 23, 4, 2);
             ctx.fillRect(tx + 13, ty - 23, 4, 2);
         } else {
-            // Draw regular forest tree
+            // Draw regular forest tree with realistic wind sway
+        
+        // Calculate realistic wind effect for this tree
+        // Trees further in the wind direction sway later (wave effect)
+        const treePhase = (tx * 0.1 + ty * 0.05) % (Math.PI * 2);
+        
+        // Calculate distance along wind direction
+        const windDirX = Math.cos(game.windGust.direction);
+        const windDirY = Math.sin(game.windGust.direction);
+        const distanceAlongWind = (tx * windDirX + ty * windDirY) / 100;
+        
+        // Wind wave travels across the course
+        const windWavePhase = game.windGust.phase - distanceAlongWind;
+        const windWaveStrength = Math.max(0, Math.sin(windWavePhase)) * game.windGust.strength;
+        
+        // Combine base sway with wind gusts
+        const baseSway = Math.sin(game.windSway * 0.8 + treePhase) * 0.8 + 
+                        Math.sin(game.windSway * 1.3 + treePhase * 1.7) * 0.4;
+        const gustSway = windWaveStrength * windDirX * 3;
+        
+        const swayAmount = baseSway + gustSway;
+        const swayX = tx + swayAmount;
         
         // Tree shadow
         ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
@@ -642,7 +751,7 @@ function draw() {
         ctx.ellipse(tx + 2, ty + 8, 12, 6, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Tree trunk - taller and more visible
+        // Tree trunk - taller and more visible (doesn't sway much)
         ctx.fillStyle = '#5D3A1A';
         ctx.fillRect(tx - 4, ty - 15, 8, 25);
         
@@ -658,73 +767,98 @@ function draw() {
         ctx.fillStyle = '#4D2A1A';
         ctx.fillRect(tx - 5, ty + 8, 10, 3);
         
-        // Foliage - Bottom/back layer (darkest)
+        // Foliage - Bottom/back layer (darkest) - with sway
         ctx.fillStyle = '#2d5016';
         // Left cluster
         ctx.beginPath();
-        ctx.arc(tx - 8, ty - 18, 10, 0, Math.PI * 2);
+        ctx.arc(swayX - 8, ty - 18, 10, 0, Math.PI * 2);
         ctx.fill();
         // Right cluster
         ctx.beginPath();
-        ctx.arc(tx + 8, ty - 18, 10, 0, Math.PI * 2);
+        ctx.arc(swayX + 8, ty - 18, 10, 0, Math.PI * 2);
         ctx.fill();
         // Center back
         ctx.beginPath();
-        ctx.arc(tx, ty - 22, 12, 0, Math.PI * 2);
+        ctx.arc(swayX, ty - 22, 12, 0, Math.PI * 2);
         ctx.fill();
         
-        // Middle foliage layer
+        // Middle foliage layer - with sway
         ctx.fillStyle = '#3d6c26';
         // Left
         ctx.beginPath();
-        ctx.arc(tx - 6, ty - 20, 9, 0, Math.PI * 2);
+        ctx.arc(swayX - 6, ty - 20, 9, 0, Math.PI * 2);
         ctx.fill();
         // Right
         ctx.beginPath();
-        ctx.arc(tx + 6, ty - 20, 9, 0, Math.PI * 2);
+        ctx.arc(swayX + 6, ty - 20, 9, 0, Math.PI * 2);
         ctx.fill();
         // Top center
         ctx.beginPath();
-        ctx.arc(tx, ty - 26, 10, 0, Math.PI * 2);
+        ctx.arc(swayX, ty - 26, 10, 0, Math.PI * 2);
         ctx.fill();
         
-        // Front foliage layer (brighter)
+        // Front foliage layer (brighter) - with sway
         ctx.fillStyle = '#4a7c2c';
         // Bottom left
         ctx.beginPath();
-        ctx.arc(tx - 5, ty - 16, 8, 0, Math.PI * 2);
+        ctx.arc(swayX - 5, ty - 16, 8, 0, Math.PI * 2);
         ctx.fill();
         // Bottom right
         ctx.beginPath();
-        ctx.arc(tx + 5, ty - 16, 8, 0, Math.PI * 2);
+        ctx.arc(swayX + 5, ty - 16, 8, 0, Math.PI * 2);
         ctx.fill();
         // Center
         ctx.beginPath();
-        ctx.arc(tx, ty - 20, 9, 0, Math.PI * 2);
+        ctx.arc(swayX, ty - 20, 9, 0, Math.PI * 2);
         ctx.fill();
         
-        // Top highlights (brightest - sunlit leaves)
+        // Top highlights (brightest - sunlit leaves) - with sway
         ctx.fillStyle = '#5a9c3c';
         ctx.beginPath();
-        ctx.arc(tx - 3, ty - 24, 6, 0, Math.PI * 2);
+        ctx.arc(swayX - 3, ty - 24, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(tx + 3, ty - 25, 5, 0, Math.PI * 2);
+        ctx.arc(swayX + 3, ty - 25, 5, 0, Math.PI * 2);
         ctx.fill();
         
-        // Brightest highlights
+        // Brightest highlights - with sway
         ctx.fillStyle = '#6aac4c';
-        ctx.fillRect(tx - 4, ty - 26, 3, 3);
-        ctx.fillRect(tx + 2, ty - 27, 2, 2);
+        ctx.fillRect(swayX - 4, ty - 26, 3, 3);
+        ctx.fillRect(swayX + 2, ty - 27, 2, 2);
         
-        // Add some texture/detail to foliage
+        // Add some texture/detail to foliage - with sway
         ctx.fillStyle = '#1d4010';
-        ctx.fillRect(tx - 7, ty - 19, 2, 2);
-        ctx.fillRect(tx + 6, ty - 21, 2, 2);
-        ctx.fillRect(tx - 2, ty - 17, 2, 2);
-        ctx.fillRect(tx + 1, ty - 23, 2, 2);
+        ctx.fillRect(swayX - 7, ty - 19, 2, 2);
+        ctx.fillRect(swayX + 6, ty - 21, 2, 2);
+        ctx.fillRect(swayX - 2, ty - 17, 2, 2);
+        ctx.fillRect(swayX + 1, ty - 23, 2, 2);
         }
     }
+    }
+    
+    // Draw falling leaves animation (only for forest course)
+    if (game.currentCourse === 1) {
+        for (const leaf of fallingLeaves) {
+            ctx.save();
+            ctx.translate(leaf.x, leaf.y);
+            
+            if (!leaf.landed) {
+                // Falling leaf - rotating
+                ctx.rotate(leaf.rotation);
+                ctx.fillStyle = leaf.color;
+                ctx.fillRect(-leaf.size / 2, -leaf.size / 2, leaf.size, leaf.size);
+            } else {
+                // Landed leaf - flat on ground with slight transparency
+                ctx.globalAlpha = 0.8;
+                ctx.fillStyle = leaf.color;
+                ctx.fillRect(-leaf.size / 2, -leaf.size / 2, leaf.size, leaf.size);
+                // Add shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fillRect(-leaf.size / 2 + 0.5, -leaf.size / 2 + 0.5, leaf.size, leaf.size);
+            }
+            
+            ctx.restore();
+        }
     }
     
     // Draw hole with realistic colors (smaller, more proportionate)
