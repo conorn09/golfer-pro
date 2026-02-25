@@ -358,10 +358,10 @@ function draw() {
         }
     }
     
-    // Draw slopes with organic shapes
+    // Draw slopes with textured appearance
     for (const slope of obstacles.slopes) {
-        // Main slope color
-        ctx.fillStyle = '#4a8c3c';
+        // Base slope color with gradient effect
+        ctx.fillStyle = '#5a9c3c';
         ctx.beginPath();
         ctx.moveTo(slope.points[0].x, slope.points[0].y);
         for (let i = 1; i < slope.points.length; i++) {
@@ -370,20 +370,33 @@ function draw() {
         ctx.closePath();
         ctx.fill();
         
-        // Darker edge
-        ctx.strokeStyle = '#3a7c2c';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        // Add darker shading on one side
+        ctx.fillStyle = 'rgba(58, 124, 44, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(slope.points[0].x, slope.points[0].y);
+        ctx.lineTo(slope.points[1].x, slope.points[1].y);
+        ctx.lineTo(slope.points[2].x, slope.points[2].y);
+        ctx.lineTo(slope.points[0].x + 20, slope.points[0].y + 20);
+        ctx.closePath();
+        ctx.fill();
         
-        // Slope contour lines
-        ctx.strokeStyle = 'rgba(58, 124, 44, 0.4)';
+        // Contour lines for elevation
+        ctx.strokeStyle = 'rgba(74, 140, 44, 0.4)';
         ctx.lineWidth = 1;
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 6; i++) {
             ctx.beginPath();
-            const offset = i * 15;
-            ctx.moveTo(slope.points[0].x + 5, slope.points[0].y + offset);
-            ctx.lineTo(slope.points[3].x - 5, slope.points[3].y + offset);
+            const offset = i * 12;
+            ctx.moveTo(slope.points[0].x + 10, slope.points[0].y + offset);
+            ctx.lineTo(slope.points[3].x - 10, slope.points[3].y + offset - 5);
             ctx.stroke();
+        }
+        
+        // Add texture dots
+        ctx.fillStyle = '#4a8c2c';
+        for (let i = 0; i < 30; i++) {
+            const px = slope.points[0].x + Math.random() * 90;
+            const py = slope.points[0].y + Math.random() * 70;
+            ctx.fillRect(px, py, 1, 1);
         }
     }
     
@@ -426,41 +439,98 @@ function draw() {
     ctx.fillRect(55, 275, 4, 4);
     ctx.fillRect(55, 321, 4, 4);
     
-    // Draw trees with more detail
+    // Draw trees with pixel art style
     for (const tree of obstacles.trees) {
+        const tx = tree.x;
+        const ty = tree.y;
+        
         // Tree shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
         ctx.beginPath();
-        ctx.ellipse(tree.x + 2, tree.y + 3, 8, 4, 0, 0, Math.PI * 2);
+        ctx.ellipse(tx + 2, ty + 8, 12, 6, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // Tree trunk
-        ctx.fillStyle = '#6B3410';
-        ctx.fillRect(tree.x - 3, tree.y - 5, 6, 10);
-        ctx.fillStyle = '#8B4513';
-        ctx.fillRect(tree.x - 2, tree.y - 5, 4, 10);
+        // Tree trunk - taller and more visible
+        ctx.fillStyle = '#5D3A1A';
+        ctx.fillRect(tx - 4, ty - 15, 8, 25);
         
-        // Tree foliage - multiple layers
-        ctx.fillStyle = '#1d4010';
-        ctx.beginPath();
-        ctx.arc(tree.x, tree.y - 6, tree.radius + 2, 0, Math.PI * 2);
-        ctx.fill();
+        // Trunk highlight (lighter side)
+        ctx.fillStyle = '#8B5A3C';
+        ctx.fillRect(tx - 3, ty - 15, 4, 25);
         
+        // Trunk shadow (darker side)
+        ctx.fillStyle = '#3D2010';
+        ctx.fillRect(tx + 1, ty - 15, 2, 25);
+        
+        // Base of trunk
+        ctx.fillStyle = '#4D2A1A';
+        ctx.fillRect(tx - 5, ty + 8, 10, 3);
+        
+        // Foliage - Bottom/back layer (darkest)
         ctx.fillStyle = '#2d5016';
+        // Left cluster
         ctx.beginPath();
-        ctx.arc(tree.x, tree.y - 8, tree.radius, 0, Math.PI * 2);
+        ctx.arc(tx - 8, ty - 18, 10, 0, Math.PI * 2);
+        ctx.fill();
+        // Right cluster
+        ctx.beginPath();
+        ctx.arc(tx + 8, ty - 18, 10, 0, Math.PI * 2);
+        ctx.fill();
+        // Center back
+        ctx.beginPath();
+        ctx.arc(tx, ty - 22, 12, 0, Math.PI * 2);
         ctx.fill();
         
-        // Lighter green highlights
-        ctx.fillStyle = '#3a6c1c';
+        // Middle foliage layer
+        ctx.fillStyle = '#3d6c26';
+        // Left
         ctx.beginPath();
-        ctx.arc(tree.x - 4, tree.y - 10, 6, 0, Math.PI * 2);
+        ctx.arc(tx - 6, ty - 20, 9, 0, Math.PI * 2);
+        ctx.fill();
+        // Right
+        ctx.beginPath();
+        ctx.arc(tx + 6, ty - 20, 9, 0, Math.PI * 2);
+        ctx.fill();
+        // Top center
+        ctx.beginPath();
+        ctx.arc(tx, ty - 26, 10, 0, Math.PI * 2);
         ctx.fill();
         
+        // Front foliage layer (brighter)
         ctx.fillStyle = '#4a7c2c';
+        // Bottom left
         ctx.beginPath();
-        ctx.arc(tree.x + 3, tree.y - 9, 4, 0, Math.PI * 2);
+        ctx.arc(tx - 5, ty - 16, 8, 0, Math.PI * 2);
         ctx.fill();
+        // Bottom right
+        ctx.beginPath();
+        ctx.arc(tx + 5, ty - 16, 8, 0, Math.PI * 2);
+        ctx.fill();
+        // Center
+        ctx.beginPath();
+        ctx.arc(tx, ty - 20, 9, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Top highlights (brightest - sunlit leaves)
+        ctx.fillStyle = '#5a9c3c';
+        ctx.beginPath();
+        ctx.arc(tx - 3, ty - 24, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(tx + 3, ty - 25, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Brightest highlights
+        ctx.fillStyle = '#6aac4c';
+        ctx.fillRect(tx - 4, ty - 26, 3, 3);
+        ctx.fillRect(tx + 2, ty - 27, 2, 2);
+        
+        // Add some texture/detail to foliage
+        ctx.fillStyle = '#1d4010';
+        ctx.fillRect(tx - 7, ty - 19, 2, 2);
+        ctx.fillRect(tx + 6, ty - 21, 2, 2);
+        ctx.fillRect(tx - 2, ty - 17, 2, 2);
+        ctx.fillRect(tx + 1, ty - 23, 2, 2);
     }
     
     // Draw green
