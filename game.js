@@ -23,7 +23,8 @@ const game = {
     selectedClub: 0,
     currentCourse: 1,
     par: 3,
-    camera: { x: 0, y: 0 }
+    camera: { x: 0, y: 0 },
+    flagWave: 0 // For flag animation
 };
 
 // Club definitions
@@ -241,6 +242,9 @@ function update() {
     game.camera.x = Math.max(0, Math.min(WORLD_WIDTH - canvas.width / ZOOM, game.camera.x));
     game.camera.y = Math.max(0, Math.min(WORLD_HEIGHT - canvas.height / ZOOM, game.camera.y));
     
+    // Update flag wave animation
+    game.flagWave += 0.1;
+    
     // Update power meter
     if (game.powerMeter.active) {
         game.powerMeter.position += game.powerMeter.speed;
@@ -371,7 +375,10 @@ function update() {
     const dy = game.ball.y - game.hole.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (distance < game.hole.radius - game.ball.radius && !game.inAir) {
+    // Ball goes in if it's close enough and moving slowly or stopped
+    const holeRadius = 4; // Match the smaller visual hole size
+    if (distance < holeRadius && !game.inAir) {
+        // Ball falls into hole
         game.ball.vx = 0;
         game.ball.vy = 0;
         game.ball.x = game.hole.x;
@@ -720,26 +727,62 @@ function draw() {
     }
     }
     
-    // Draw hole
-    ctx.fillStyle = '#1a1a1a';
+    // Draw hole with realistic colors (smaller, more proportionate)
+    const holeSize = 4; // Smaller, more realistic hole size
+    
+    // Outer cup edge (light gray/beige - worn edge)
+    ctx.fillStyle = '#C0C0C0';
     ctx.beginPath();
-    ctx.arc(game.hole.x, game.hole.y, game.hole.radius, 0, Math.PI * 2);
+    ctx.arc(game.hole.x, game.hole.y, holeSize + 1.5, 0, Math.PI * 2);
     ctx.fill();
     
-    // Draw flag
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    // Inner cup (darker gray)
+    ctx.fillStyle = '#505050';
+    ctx.beginPath();
+    ctx.arc(game.hole.x, game.hole.y, holeSize + 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Black hole center (very dark)
+    ctx.fillStyle = '#0a0a0a';
+    ctx.beginPath();
+    ctx.arc(game.hole.x, game.hole.y, holeSize, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Draw flag pole (white/light colored, thinner)
+    ctx.strokeStyle = '#F5F5F5';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(game.hole.x, game.hole.y);
-    ctx.lineTo(game.hole.x, game.hole.y - 30);
+    ctx.lineTo(game.hole.x, game.hole.y - 25);
     ctx.stroke();
     
-    ctx.fillStyle = '#ff0000';
+    // Flag with wave animation (smaller, more proportionate)
+    const flagHeight = 8;
+    const flagWidth = 12;
+    const flagTop = game.hole.y - 25;
+    
+    // Calculate wave effect
+    const wave1 = Math.sin(game.flagWave) * 1.5;
+    const wave2 = Math.sin(game.flagWave + 0.5) * 1;
+    
+    // Draw waving flag
+    ctx.fillStyle = '#DC143C';
     ctx.beginPath();
-    ctx.moveTo(game.hole.x, game.hole.y - 30);
-    ctx.lineTo(game.hole.x + 15, game.hole.y - 23);
-    ctx.lineTo(game.hole.x, game.hole.y - 16);
+    ctx.moveTo(game.hole.x, flagTop);
+    ctx.quadraticCurveTo(
+        game.hole.x + flagWidth / 2 + wave1, 
+        flagTop + flagHeight / 2, 
+        game.hole.x + wave2, 
+        flagTop + flagHeight
+    );
+    ctx.lineTo(game.hole.x, flagTop);
+    ctx.closePath();
     ctx.fill();
+    
+    // Flag shadow/outline for depth
+    ctx.strokeStyle = '#8B0000';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
     
     // Draw ball shadow (when in air)
     if (game.inAir && game.ball.z > 0) {
@@ -874,6 +917,11 @@ function draw() {
         ctx.font = '16px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('Click to hit!', canvas.width / 2, barY - 10);
+    }
+    
+    // Draw scorecard when hole is complete
+    if (game.won) {
+        drawScorecard();
     }
 }
 
@@ -1046,6 +1094,80 @@ function drawClubSelector() {
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(club.name, iconX, boxY + 55);
+}
+
+function drawScorecard() {
+    // Semi-transparent overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Scorecard box
+    const boxWidth = 400;
+    const boxHeight = 300;
+    const boxX = canvas.width / 2 - boxWidth / 2;
+    const boxY = canvas.height / 2 - boxHeight / 2;
+    
+    // Background
+    ctx.fillStyle = '#2d5016';
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+    
+    // Border
+    ctx.strokeStyle = '#6aac4c';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+    
+    // Title
+    ctx.fillStyle = '#FFFF00';
+    ctx.font = 'bold 32px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('HOLE COMPLETE!', canvas.width / 2, boxY + 50);
+    
+    // Course name
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px monospace';
+    const courseName = game.currentCourse === 1 ? 'Forest Glen' : 'Tropical Paradise';
+    ctx.fillText(`Course ${game.currentCourse}: ${courseName}`, canvas.width / 2, boxY + 85);
+    
+    // Score details
+    const par = game.par;
+    const diff = game.strokes - par;
+    let scoreText = '';
+    let scoreColor = '#fff';
+    
+    if (diff === -2) {
+        scoreText = 'EAGLE! 🦅';
+        scoreColor = '#FFD700';
+    } else if (diff === -1) {
+        scoreText = 'BIRDIE! 🐦';
+        scoreColor = '#90EE90';
+    } else if (diff === 0) {
+        scoreText = 'PAR ⛳';
+        scoreColor = '#87CEEB';
+    } else if (diff === 1) {
+        scoreText = 'BOGEY';
+        scoreColor = '#FFA500';
+    } else if (diff === 2) {
+        scoreText = 'DOUBLE BOGEY';
+        scoreColor = '#FF6347';
+    } else {
+        scoreText = `+${diff}`;
+        scoreColor = '#FF4444';
+    }
+    
+    ctx.fillStyle = scoreColor;
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText(scoreText, canvas.width / 2, boxY + 140);
+    
+    // Stats
+    ctx.fillStyle = '#fff';
+    ctx.font = '18px monospace';
+    ctx.fillText(`Par: ${par}`, canvas.width / 2, boxY + 180);
+    ctx.fillText(`Your Score: ${game.strokes}`, canvas.width / 2, boxY + 210);
+    
+    // Instructions
+    ctx.font = '14px monospace';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText('Click "Back to Menu" to play another course', canvas.width / 2, boxY + 260);
 }
 
 function updateUI() {
