@@ -27,7 +27,12 @@ const game = {
     flagWave: 0, // For flag animation
     windSway: 0, // For tree sway animation
     leafSpawnTimer: 0, // Timer for spawning new falling leaves
-    windGust: { // Realistic wind gusts
+    wind: { // Wind system that affects ball flight
+        speed: 0, // mph
+        direction: 0, // radians (0 = right, PI/2 = down, PI = left, 3PI/2 = up)
+        maxSpeed: 5 // Max wind speed for current course
+    },
+    windGust: { // Visual wind gusts for trees
         strength: 0,
         direction: 0,
         phase: 0,
@@ -258,12 +263,12 @@ function update() {
     // Update realistic wind system
     game.windSway += 0.02;
     
-    // Wind gust system - creates waves of wind that travel across the course
+    // Wind gust system - synced with main wind direction
     game.windGust.nextGustTimer--;
     if (game.windGust.nextGustTimer <= 0) {
-        // Start a new gust
-        game.windGust.strength = 0.5 + Math.random() * 1.5; // Random strength
-        game.windGust.direction = Math.random() * Math.PI * 2; // Random direction
+        // Start a new gust - use main wind direction with slight variation
+        game.windGust.strength = (game.wind.speed / game.wind.maxSpeed) * 1.5; // Strength based on wind speed
+        game.windGust.direction = game.wind.direction + (Math.random() - 0.5) * 0.3; // Slight variation
         game.windGust.phase = 0;
         game.windGust.nextGustTimer = 120 + Math.random() * 180; // Next gust in 2-5 seconds
     }
@@ -271,6 +276,14 @@ function update() {
     // Update gust phase (travels across course)
     if (game.windGust.phase < Math.PI * 2) {
         game.windGust.phase += 0.03;
+    }
+    
+    // Apply wind to ball when in air
+    if (game.inAir && game.ball.z > 0) {
+        // Wind affects ball more when higher in the air
+        const windEffect = (game.ball.z / 50) * (game.wind.speed / 10); // Scale wind effect
+        game.ball.vx += Math.cos(game.wind.direction) * windEffect * 0.02;
+        game.ball.vy += Math.sin(game.wind.direction) * windEffect * 0.02;
     }
     
     // Update falling leaves (only for forest course) - 2x more
@@ -284,12 +297,13 @@ function update() {
                 const tree = obstacles.trees[Math.floor(Math.random() * obstacles.trees.length)];
                 if (tree.type === 'forest') {
                     // Leaves are affected by wind when spawned
-                    const windEffect = Math.cos(game.windGust.direction) * game.windGust.strength * 0.3;
+                    const windEffect = Math.cos(game.wind.direction) * (game.wind.speed / 10) * 0.5;
+                    const windEffectY = Math.sin(game.wind.direction) * (game.wind.speed / 10) * 0.5;
                     fallingLeaves.push({
                         x: tree.x + (Math.random() - 0.5) * 20,
                         y: tree.y - 20 + (Math.random() - 0.5) * 10,
                         vx: (Math.random() - 0.5) * 0.8 + windEffect,
-                        vy: 0.2 + Math.random() * 0.4,
+                        vy: 0.2 + Math.random() * 0.4 + Math.abs(windEffectY),
                         rotation: Math.random() * Math.PI * 2,
                         rotationSpeed: (Math.random() - 0.5) * 0.3,
                         color: Math.random() > 0.5 ? '#8B4513' : (Math.random() > 0.5 ? '#A0522D' : '#CD853F'),
@@ -310,8 +324,10 @@ function update() {
                 leaf.rotation += leaf.rotationSpeed;
                 
                 // Add wind effect to falling leaves
-                const windPush = Math.cos(game.windGust.direction) * game.windGust.strength * 0.05;
-                leaf.vx += windPush + (Math.random() - 0.5) * 0.08;
+                const windPushX = Math.cos(game.wind.direction) * (game.wind.speed / 10) * 0.08;
+                const windPushY = Math.sin(game.wind.direction) * (game.wind.speed / 10) * 0.08;
+                leaf.vx += windPushX + (Math.random() - 0.5) * 0.08;
+                leaf.vy += Math.abs(windPushY) * 0.5; // Wind can speed up falling
                 leaf.vx *= 0.98; // Damping
                 
                 // Check if leaf has landed on the ground (fairway area)
@@ -955,6 +971,9 @@ function draw() {
     // Draw club selector
     drawClubSelector();
     
+    // Draw wind compass
+    drawWindCompass();
+    
     // Draw aiming preview and target indicators in world space
     ctx.save();
     ctx.scale(ZOOM, ZOOM);
@@ -1230,6 +1249,76 @@ function drawClubSelector() {
     ctx.fillText(club.name, iconX, boxY + 55);
 }
 
+function drawWindCompass() {
+    const compassSize = 60;
+    const compassX = canvas.width - compassSize - 15;
+    const compassY = 15 + compassSize / 2;
+    
+    // Background circle
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.beginPath();
+    ctx.arc(compassX, compassY, compassSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Border
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Cardinal directions
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // N
+    ctx.fillText('N', compassX, compassY - 20);
+    // E
+    ctx.fillText('E', compassX + 20, compassY);
+    // S
+    ctx.fillText('S', compassX, compassY + 20);
+    // W
+    ctx.fillText('W', compassX - 20, compassY);
+    
+    // Wind arrow
+    const arrowLength = 18;
+    const arrowAngle = game.wind.direction - Math.PI / 2; // Adjust for canvas coordinates
+    const arrowEndX = compassX + Math.cos(arrowAngle) * arrowLength;
+    const arrowEndY = compassY + Math.sin(arrowAngle) * arrowLength;
+    
+    // Arrow color based on wind speed
+    const windStrength = game.wind.speed / game.wind.maxSpeed;
+    if (windStrength < 0.3) {
+        ctx.strokeStyle = '#90EE90'; // Light green - calm
+    } else if (windStrength < 0.7) {
+        ctx.strokeStyle = '#FFD700'; // Yellow - moderate
+    } else {
+        ctx.strokeStyle = '#FF6347'; // Red - strong
+    }
+    
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(compassX, compassY);
+    ctx.lineTo(arrowEndX, arrowEndY);
+    ctx.stroke();
+    
+    // Arrow head
+    const headAngle1 = arrowAngle - Math.PI / 6;
+    const headAngle2 = arrowAngle + Math.PI / 6;
+    ctx.beginPath();
+    ctx.moveTo(arrowEndX, arrowEndY);
+    ctx.lineTo(arrowEndX - Math.cos(headAngle1) * 6, arrowEndY - Math.sin(headAngle1) * 6);
+    ctx.moveTo(arrowEndX, arrowEndY);
+    ctx.lineTo(arrowEndX - Math.cos(headAngle2) * 6, arrowEndY - Math.sin(headAngle2) * 6);
+    ctx.stroke();
+    
+    // Wind speed text
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.round(game.wind.speed) + ' mph', compassX, compassY + compassSize / 2 + 20);
+}
+
 function drawScorecard() {
     // Semi-transparent overlay
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
@@ -1344,6 +1433,19 @@ function loadCourse(courseNumber) {
     
     // Clear sand textures
     sandTextures.length = 0;
+    
+    // Set wind for the hole (stays constant for entire hole)
+    if (courseNumber === 1) {
+        // Forest Glen - Par 3 - Beginner course, max 5 mph wind
+        game.wind.maxSpeed = 5;
+        game.wind.speed = Math.random() * game.wind.maxSpeed;
+        game.wind.direction = Math.random() * Math.PI * 2;
+    } else if (courseNumber === 2) {
+        // Tropical Paradise - Par 5 - More challenging wind
+        game.wind.maxSpeed = 10;
+        game.wind.speed = Math.random() * game.wind.maxSpeed;
+        game.wind.direction = Math.random() * Math.PI * 2;
+    }
     
     if (courseNumber === 1) {
         // Forest Glen - Par 3
