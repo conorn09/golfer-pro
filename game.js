@@ -6,7 +6,15 @@ const game = {
     ball: { x: 100, y: 300, vx: 0, vy: 0, z: 0, vz: 0, radius: 4 },
     hole: { x: 700, y: 300, radius: 8 },
     tee: { x: 100, y: 300 },
-    powerMeter: { charging: false, power: 0, maxPower: 20 },
+    powerMeter: { 
+        active: false, 
+        position: 0, 
+        speed: 2,
+        perfectZoneStart: 75,
+        perfectZoneEnd: 85,
+        maxPosition: 100
+    },
+    targetPos: { x: 0, y: 0, set: false },
     strokes: 0,
     isMoving: false,
     won: false,
@@ -162,7 +170,6 @@ for (let i = 0; i < 60; i++) {
 }
 
 // Mouse handling
-let mouseDown = false;
 let mousePos = { x: 0, y: 0 };
 
 canvas.addEventListener('mousedown', (e) => {
@@ -176,27 +183,28 @@ canvas.addEventListener('mousedown', (e) => {
             if (mousePos.x > 10 && mousePos.x < 30) {
                 // Left arrow
                 game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
-                game.powerMeter.maxPower = clubs[game.selectedClub].maxPower;
                 return;
             } else if (mousePos.x > 110 && mousePos.x < 130) {
                 // Right arrow
                 game.selectedClub = (game.selectedClub + 1) % clubs.length;
-                game.powerMeter.maxPower = clubs[game.selectedClub].maxPower;
                 return;
             }
         }
         
-        mouseDown = true;
-        game.powerMeter.charging = true;
-        game.powerMeter.power = 0;
-    }
-});
-
-canvas.addEventListener('mouseup', (e) => {
-    if (mouseDown && game.powerMeter.charging) {
-        shoot();
-        mouseDown = false;
-        game.powerMeter.charging = false;
+        // First click: set target
+        if (!game.targetPos.set) {
+            game.targetPos.x = mousePos.x;
+            game.targetPos.y = mousePos.y;
+            game.targetPos.set = true;
+            game.powerMeter.active = true;
+            game.powerMeter.position = 0;
+        }
+        // Second click: hit the ball based on power meter position
+        else if (game.powerMeter.active) {
+            shoot();
+            game.powerMeter.active = false;
+            game.targetPos.set = false;
+        }
     }
 });
 
@@ -207,17 +215,45 @@ canvas.addEventListener('mousemove', (e) => {
 });
 
 function shoot() {
-    const dx = game.ball.x - mousePos.x;
-    const dy = game.ball.y - mousePos.y;
+    const club = clubs[game.selectedClub];
+    const dx = game.targetPos.x - game.ball.x;
+    const dy = game.targetPos.y - game.ball.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     if (distance > 0) {
-        const power = game.powerMeter.power;
-        const club = clubs[game.selectedClub];
+        // Calculate accuracy based on power meter position
+        const meterPos = game.powerMeter.position;
+        const perfectStart = game.powerMeter.perfectZoneStart;
+        const perfectEnd = game.powerMeter.perfectZoneEnd;
         
-        // Calculate power multiplier based on club distance
-        // This ensures max power = max distance shown
-        const powerMultiplier = club.distance / club.maxPower;
+        let accuracy = 1.0;
+        let angleError = 0;
+        
+        if (meterPos >= perfectStart && meterPos <= perfectEnd) {
+            // Perfect shot!
+            accuracy = 1.0;
+            angleError = 0;
+        } else {
+            // Calculate how far off from perfect zone
+            let distanceFromPerfect;
+            if (meterPos < perfectStart) {
+                distanceFromPerfect = perfectStart - meterPos;
+                angleError = -distanceFromPerfect * 0.01; // Miss left
+            } else {
+                distanceFromPerfect = meterPos - perfectEnd;
+                angleError = distanceFromPerfect * 0.01; // Miss right
+            }
+            accuracy = Math.max(0.7, 1.0 - distanceFromPerfect * 0.005);
+        }
+        
+        // Calculate base angle to target
+        const baseAngle = Math.atan2(dy, dx);
+        // Add error based on accuracy
+        const actualAngle = baseAngle + angleError;
+        
+        // Calculate power based on distance and club
+        const targetDistance = Math.min(distance, club.distance);
+        const power = (targetDistance / club.distance) * club.maxPower * accuracy;
         
         // Check if on green (putting)
         const distToHole = Math.sqrt(
@@ -226,19 +262,21 @@ function shoot() {
         );
         const onGreen = distToHole < GREEN_RADIUS;
         
+        const powerMultiplier = club.distance / club.maxPower;
+        
         if (onGreen || club.name === 'Putter') {
             // Putting - ball rolls on ground
             const putterSpeed = power * (powerMultiplier / 20);
-            game.ball.vx = (dx / distance) * putterSpeed;
-            game.ball.vy = (dy / distance) * putterSpeed;
+            game.ball.vx = Math.cos(actualAngle) * putterSpeed;
+            game.ball.vy = Math.sin(actualAngle) * putterSpeed;
             game.ball.z = 0;
             game.ball.vz = 0;
             game.inAir = false;
         } else {
             // Full shot - ball flies through air
             const shotSpeed = power * (powerMultiplier / 35);
-            game.ball.vx = (dx / distance) * shotSpeed;
-            game.ball.vy = (dy / distance) * shotSpeed;
+            game.ball.vx = Math.cos(actualAngle) * shotSpeed;
+            game.ball.vy = Math.sin(actualAngle) * shotSpeed;
             game.ball.z = 0;
             game.ball.vz = power * club.loft * 0.5;
             game.inAir = true;
@@ -253,11 +291,11 @@ function shoot() {
 }
 
 function update() {
-    // Charge power meter (constant speed for all clubs)
-    if (game.powerMeter.charging) {
-        game.powerMeter.power += 0.15;
-        if (game.powerMeter.power > game.powerMeter.maxPower) {
-            game.powerMeter.power = 0;
+    // Update power meter
+    if (game.powerMeter.active) {
+        game.powerMeter.position += game.powerMeter.speed;
+        if (game.powerMeter.position >= game.powerMeter.maxPosition) {
+            game.powerMeter.position = 0;
         }
     }
     
@@ -679,43 +717,66 @@ function draw() {
     // Draw club selector
     drawClubSelector();
     
-    // Draw aim line and power meter when charging
-    if (game.powerMeter.charging) {
-        const dx = game.ball.x - mousePos.x;
-        const dy = game.ball.y - mousePos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+    // Draw target indicator and aim line
+    if (game.targetPos.set) {
+        // Draw line from ball to target
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 5]);
+        ctx.beginPath();
+        ctx.moveTo(game.ball.x, game.ball.y);
+        ctx.lineTo(game.targetPos.x, game.targetPos.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
         
-        if (distance > 0) {
-            const club = clubs[game.selectedClub];
-            const aimLineLength = club.distance; // Aim line shows max distance
-            
-            // Aim line (length based on club)
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(game.ball.x, game.ball.y);
-            ctx.lineTo(game.ball.x + (dx / distance) * aimLineLength, game.ball.y + (dy / distance) * aimLineLength);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Power meter (below golfer)
-            const meterWidth = 100;
-            const meterHeight = 20;
-            const meterX = game.golfer.x - meterWidth / 2;
-            const meterY = game.golfer.y + 25;
-            
-            ctx.fillStyle = '#333';
-            ctx.fillRect(meterX, meterY, meterWidth, meterHeight);
-            
-            const powerPercent = game.powerMeter.power / game.powerMeter.maxPower;
-            ctx.fillStyle = powerPercent < 0.5 ? '#4CAF50' : powerPercent < 0.8 ? '#FFC107' : '#F44336';
-            ctx.fillRect(meterX, meterY, meterWidth * powerPercent, meterHeight);
-            
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(meterX, meterY, meterWidth, meterHeight);
-        }
+        // Draw target marker
+        ctx.strokeStyle = '#FFFF00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(game.targetPos.x, game.targetPos.y, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(game.targetPos.x - 10, game.targetPos.y);
+        ctx.lineTo(game.targetPos.x + 10, game.targetPos.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(game.targetPos.x, game.targetPos.y - 10);
+        ctx.lineTo(game.targetPos.x, game.targetPos.y + 10);
+        ctx.stroke();
+    }
+    
+    // Draw power meter bar
+    if (game.powerMeter.active) {
+        const barWidth = 300;
+        const barHeight = 30;
+        const barX = canvas.width / 2 - barWidth / 2;
+        const barY = canvas.height - 150;
+        
+        // Background
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Perfect zone (green)
+        const perfectStart = (game.powerMeter.perfectZoneStart / 100) * barWidth;
+        const perfectWidth = ((game.powerMeter.perfectZoneEnd - game.powerMeter.perfectZoneStart) / 100) * barWidth;
+        ctx.fillStyle = '#4CAF50';
+        ctx.fillRect(barX + perfectStart, barY, perfectWidth, barHeight);
+        
+        // Moving indicator
+        const indicatorX = barX + (game.powerMeter.position / 100) * barWidth;
+        ctx.fillStyle = '#FFF';
+        ctx.fillRect(indicatorX - 3, barY - 5, 6, barHeight + 10);
+        
+        // Border
+        ctx.strokeStyle = '#FFF';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        
+        // Text
+        ctx.fillStyle = '#FFF';
+        ctx.font = '16px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Click to hit!', canvas.width / 2, barY - 10);
     }
 }
 
