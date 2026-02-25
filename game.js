@@ -171,6 +171,7 @@ for (let i = 0; i < 60; i++) {
 
 // Mouse handling
 let mousePos = { x: 0, y: 0 };
+let aimingMode = false; // Track if we're in aiming mode (before power meter)
 
 canvas.addEventListener('mousedown', (e) => {
     if (!game.isMoving && !game.won) {
@@ -191,13 +192,14 @@ canvas.addEventListener('mousedown', (e) => {
             }
         }
         
-        // First click: set target
-        if (!game.targetPos.set) {
+        // First click: confirm target and start power meter
+        if (!game.powerMeter.active) {
             game.targetPos.x = mousePos.x;
             game.targetPos.y = mousePos.y;
             game.targetPos.set = true;
             game.powerMeter.active = true;
             game.powerMeter.position = 0;
+            aimingMode = false; // Exit aiming mode
         }
         // Second click: hit the ball based on power meter position
         else if (game.powerMeter.active) {
@@ -212,6 +214,11 @@ canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     mousePos.x = e.clientX - rect.left;
     mousePos.y = e.clientY - rect.top;
+    
+    // Enable aiming mode when mouse is over canvas and not in power meter mode
+    if (!game.isMoving && !game.won && !game.powerMeter.active) {
+        aimingMode = true;
+    }
 });
 
 function shoot() {
@@ -717,10 +724,38 @@ function draw() {
     // Draw club selector
     drawClubSelector();
     
-    // Draw target indicator and aim line
-    if (game.targetPos.set) {
+    // Draw aiming preview (when hovering, before clicking)
+    if (aimingMode && !game.powerMeter.active) {
+        // Draw line from ball to mouse position
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 5]);
+        ctx.beginPath();
+        ctx.moveTo(game.ball.x, game.ball.y);
+        ctx.lineTo(mousePos.x, mousePos.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Draw target marker at mouse position
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(mousePos.x, mousePos.y, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mousePos.x - 10, mousePos.y);
+        ctx.lineTo(mousePos.x + 10, mousePos.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mousePos.x, mousePos.y - 10);
+        ctx.lineTo(mousePos.x, mousePos.y + 10);
+        ctx.stroke();
+    }
+    
+    // Draw confirmed target indicator and aim line (after first click)
+    if (game.targetPos.set && game.powerMeter.active) {
         // Draw line from ball to target
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.lineWidth = 3;
         ctx.setLineDash([10, 5]);
         ctx.beginPath();
@@ -731,17 +766,17 @@ function draw() {
         
         // Draw target marker
         ctx.strokeStyle = '#FFFF00';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(game.targetPos.x, game.targetPos.y, 8, 0, Math.PI * 2);
+        ctx.arc(game.targetPos.x, game.targetPos.y, 10, 0, Math.PI * 2);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(game.targetPos.x - 10, game.targetPos.y);
-        ctx.lineTo(game.targetPos.x + 10, game.targetPos.y);
+        ctx.moveTo(game.targetPos.x - 12, game.targetPos.y);
+        ctx.lineTo(game.targetPos.x + 12, game.targetPos.y);
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(game.targetPos.x, game.targetPos.y - 10);
-        ctx.lineTo(game.targetPos.x, game.targetPos.y + 10);
+        ctx.moveTo(game.targetPos.x, game.targetPos.y - 12);
+        ctx.lineTo(game.targetPos.x, game.targetPos.y + 12);
         ctx.stroke();
     }
     
