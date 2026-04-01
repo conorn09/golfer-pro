@@ -54,7 +54,7 @@ let obstacles = {};
 const FRICTION = 0.98;
 const SAND_FRICTION = 0.85;
 const MIN_VELOCITY = 0.1;
-const GRAVITY = 0.3;
+const GRAVITY = 0.15; // Reduced for slower, more visible ball flight
 let GREEN_RADIUS = 80;
 const ZOOM = 2; // 2x zoom
 const WORLD_WIDTH = 800;
@@ -98,29 +98,65 @@ for (let i = 0; i < 60; i++) {
 // Mouse handling
 let mousePos = { x: 0, y: 0 };
 let aimingMode = false; // Track if we're in aiming mode (before power meter)
+let mapMode = false; // Track if we're in map viewing mode
+let isDragging = false; // Track if we're dragging the map in map mode
+let dragStart = { x: 0, y: 0 };
+let cameraOffset = { x: 0, y: 0 }; // Manual camera offset from dragging
+
+// M key to toggle map mode
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+        if (!game.isMoving) {
+            mapMode = !mapMode;
+            if (!mapMode) {
+                // Snap camera back to ball
+                cameraOffset.x = 0;
+                cameraOffset.y = 0;
+            }
+            aimingMode = false;
+        }
+    }
+});
 
 canvas.addEventListener('mousedown', (e) => {
+    // In map mode, start dragging
+    if (mapMode) {
+        isDragging = true;
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+        return;
+    }
+    
     if (!game.isMoving && !game.won) {
         const rect = canvas.getBoundingClientRect();
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
         
-        // Convert screen coordinates to world coordinates
-        mousePos.x = (screenX / ZOOM) + game.camera.x;
-        mousePos.y = (screenY / ZOOM) + game.camera.y;
+        // Check if clicking club selector box
+        const clubBoxX = 10;
+        const clubBoxY = canvas.height - 120;
+        const clubBoxWidth = 200;
+        const clubBoxHeight = 100;
         
-        // Check if clicking club selector arrows (in screen space)
-        if (screenY > canvas.height - 80 && screenY < canvas.height - 20) {
-            if (screenX > 10 && screenX < 30) {
-                // Left arrow
+        if (screenY > clubBoxY && screenY < clubBoxY + clubBoxHeight &&
+            screenX > clubBoxX && screenX < clubBoxX + clubBoxWidth) {
+            // Click is inside club selector box
+            if (screenX > clubBoxX + 5 && screenX < clubBoxX + 40) {
+                // Left arrow area
                 game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
                 return;
-            } else if (screenX > 110 && screenX < 130) {
-                // Right arrow
+            } else if (screenX > clubBoxX + clubBoxWidth - 40 && screenX < clubBoxX + clubBoxWidth - 5) {
+                // Right arrow area
                 game.selectedClub = (game.selectedClub + 1) % clubs.length;
                 return;
             }
+            // Click is in club box but not on arrows - ignore it
+            return;
         }
+        
+        // Convert screen coordinates to world coordinates
+        mousePos.x = (screenX / ZOOM) + game.camera.x;
+        mousePos.y = (screenY / ZOOM) + game.camera.y;
         
         // First click: confirm target and start power meter
         if (!game.powerMeter.active) {
@@ -140,10 +176,36 @@ canvas.addEventListener('mousedown', (e) => {
     }
 });
 
+canvas.addEventListener('mouseup', (e) => {
+    isDragging = false;
+});
+
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const screenX = e.clientX - rect.left;
     const screenY = e.clientY - rect.top;
+    
+    // Handle map dragging in map mode
+    if (mapMode && isDragging) {
+        const dx = e.clientX - dragStart.x;
+        const dy = e.clientY - dragStart.y;
+        cameraOffset.x -= dx / ZOOM;
+        cameraOffset.y -= dy / ZOOM;
+        dragStart.x = e.clientX;
+        dragStart.y = e.clientY;
+        return;
+    }
+    
+    // Don't update aiming in map mode
+    if (mapMode) return;
+    
+    // Check if mouse is over club selector box
+    const clubBoxX = 10;
+    const clubBoxY = canvas.height - 120;
+    const clubBoxWidth = 200;
+    const clubBoxHeight = 100;
+    const mouseOverClubBox = screenX >= clubBoxX && screenX <= clubBoxX + clubBoxWidth &&
+                             screenY >= clubBoxY && screenY <= clubBoxY + clubBoxHeight;
     
     // Convert screen coordinates to world coordinates
     const rawX = (screenX / ZOOM) + game.camera.x;
@@ -165,7 +227,8 @@ canvas.addEventListener('mousemove', (e) => {
             mousePos.x = rawX;
             mousePos.y = rawY;
         }
-        aimingMode = true;
+        // Only show aiming mode if mouse is NOT over club selector
+        aimingMode = !mouseOverClubBox;
     } else {
         mousePos.x = rawX;
         mousePos.y = rawY;
@@ -224,19 +287,19 @@ function shoot() {
         
         if (onGreen || club.name === 'Putter') {
             // Putting - ball rolls on ground
-            const putterSpeed = power * (powerMultiplier / 20);
+            const putterSpeed = power * (powerMultiplier / 25);
             game.ball.vx = Math.cos(actualAngle) * putterSpeed;
             game.ball.vy = Math.sin(actualAngle) * putterSpeed;
             game.ball.z = 0;
             game.ball.vz = 0;
             game.inAir = false;
         } else {
-            // Full shot - ball flies through air
-            const shotSpeed = power * (powerMultiplier / 35);
+            // Full shot - ball flies through air (reduced speed for better distance control)
+            const shotSpeed = power * (powerMultiplier / 55);
             game.ball.vx = Math.cos(actualAngle) * shotSpeed;
             game.ball.vy = Math.sin(actualAngle) * shotSpeed;
             game.ball.z = 0;
-            game.ball.vz = power * club.loft * 0.5;
+            game.ball.vz = power * club.loft * 0.35;
             game.inAir = true;
         }
         
@@ -249,9 +312,22 @@ function shoot() {
 }
 
 function update() {
-    // Update camera to follow ball
-    game.camera.x = game.ball.x - (canvas.width / ZOOM) / 2;
-    game.camera.y = game.ball.y - (canvas.height / ZOOM) / 2;
+    // Update camera
+    if (mapMode) {
+        // Manual camera position (map viewing mode)
+        game.camera.x = game.ball.x - (canvas.width / ZOOM) / 2 + cameraOffset.x;
+        game.camera.y = game.ball.y - (canvas.height / ZOOM) / 2 + cameraOffset.y;
+    } else if (game.isMoving) {
+        // Camera follows ball when moving, reset offset
+        cameraOffset.x = 0;
+        cameraOffset.y = 0;
+        game.camera.x = game.ball.x - (canvas.width / ZOOM) / 2;
+        game.camera.y = game.ball.y - (canvas.height / ZOOM) / 2;
+    } else {
+        // Camera follows ball normally
+        game.camera.x = game.ball.x - (canvas.width / ZOOM) / 2 + cameraOffset.x;
+        game.camera.y = game.ball.y - (canvas.height / ZOOM) / 2 + cameraOffset.y;
+    }
     
     // Clamp camera to world bounds
     game.camera.x = Math.max(0, Math.min(WORLD_WIDTH - canvas.width / ZOOM, game.camera.x));
@@ -999,13 +1075,36 @@ function draw() {
     // Draw wind compass
     drawWindCompass();
     
+    // Draw map mode indicator or hint
+    if (mapMode) {
+        // Map mode banner
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(canvas.width / 2 - 120, 10, 240, 30);
+        ctx.strokeStyle = '#FFFF00';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(canvas.width / 2 - 120, 10, 240, 30);
+        ctx.fillStyle = '#FFFF00';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('MAP VIEW - Drag to look around', canvas.width / 2, 30);
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.font = '12px monospace';
+        ctx.fillText('Press M to return', canvas.width / 2, 55);
+    } else if (!game.isMoving && !game.won && !game.powerMeter.active) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Press M to view map', canvas.width / 2, canvas.height - 10);
+    }
+    
     // Draw aiming preview and target indicators in world space
     ctx.save();
     ctx.scale(ZOOM, ZOOM);
     ctx.translate(-game.camera.x, -game.camera.y);
     
-    // Draw aiming preview (when hovering, before clicking)
-    if (aimingMode && !game.powerMeter.active) {
+    // Draw aiming preview (when hovering, before clicking) - not in map mode
+    if (aimingMode && !game.powerMeter.active && !mapMode) {
         // Draw line from ball to mouse position
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.lineWidth = 2;
@@ -1032,8 +1131,8 @@ function draw() {
         ctx.stroke();
     }
     
-    // Draw confirmed target indicator and aim line (after first click)
-    if (game.targetPos.set && game.powerMeter.active) {
+    // Draw confirmed target indicator and aim line (after first click) - not in map mode
+    if (game.targetPos.set && game.powerMeter.active && !mapMode) {
         // Draw line from ball to target
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.lineWidth = 3;
@@ -1179,9 +1278,9 @@ function drawGolfer() {
 function drawClubSelector() {
     const club = clubs[game.selectedClub];
     const boxX = 10;
-    const boxY = canvas.height - 80;
-    const boxWidth = 120;
-    const boxHeight = 60;
+    const boxY = canvas.height - 120;
+    const boxWidth = 200;
+    const boxHeight = 100;
     
     // Background box
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -1190,88 +1289,87 @@ function drawClubSelector() {
     ctx.lineWidth = 2;
     ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
     
-    // Left arrow
-    ctx.fillStyle = '#fff';
+    // Left arrow button area
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fillRect(boxX + 5, boxY + 25, 35, 50);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(boxX + 20, boxY + 30);
-    ctx.lineTo(boxX + 10, boxY + 30);
-    ctx.lineTo(boxX + 15, boxY + 25);
-    ctx.moveTo(boxX + 10, boxY + 30);
-    ctx.lineTo(boxX + 15, boxY + 35);
+    ctx.moveTo(boxX + 30, boxY + 38);
+    ctx.lineTo(boxX + 15, boxY + 50);
+    ctx.lineTo(boxX + 30, boxY + 62);
     ctx.stroke();
     
-    // Right arrow
+    // Right arrow button area
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fillRect(boxX + boxWidth - 40, boxY + 25, 35, 50);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(boxX + 110, boxY + 30);
-    ctx.lineTo(boxX + 120, boxY + 30);
-    ctx.lineTo(boxX + 115, boxY + 25);
-    ctx.moveTo(boxX + 120, boxY + 30);
-    ctx.lineTo(boxX + 115, boxY + 35);
+    ctx.moveTo(boxX + boxWidth - 30, boxY + 38);
+    ctx.lineTo(boxX + boxWidth - 15, boxY + 50);
+    ctx.lineTo(boxX + boxWidth - 30, boxY + 62);
     ctx.stroke();
     
-    // Draw club icon
-    const iconX = boxX + 60;
-    const iconY = boxY + 35;
+    // Draw club icon (centered)
+    const iconX = boxX + boxWidth / 2;
+    const iconY = boxY + 50;
     
     if (club.name === 'Putter') {
-        // Putter - flat head
         ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 15);
+        ctx.moveTo(iconX, iconY - 22);
         ctx.lineTo(iconX, iconY);
         ctx.stroke();
         ctx.fillStyle = '#C0C0C0';
-        ctx.fillRect(iconX - 6, iconY, 12, 3);
+        ctx.fillRect(iconX - 9, iconY, 18, 5);
     } else if (club.name === 'Sand Wedge') {
-        // Sand wedge - angled head
         ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 15);
-        ctx.lineTo(iconX, iconY);
-        ctx.stroke();
-        ctx.fillStyle = '#C0C0C0';
-        ctx.beginPath();
-        ctx.moveTo(iconX - 2, iconY);
-        ctx.lineTo(iconX + 8, iconY + 3);
-        ctx.lineTo(iconX + 8, iconY + 6);
-        ctx.lineTo(iconX - 2, iconY + 3);
-        ctx.fill();
-    } else if (club.name === '7 Iron') {
-        // 7 Iron - medium angled head
-        ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 15);
+        ctx.moveTo(iconX, iconY - 22);
         ctx.lineTo(iconX, iconY);
         ctx.stroke();
         ctx.fillStyle = '#C0C0C0';
         ctx.beginPath();
         ctx.moveTo(iconX - 3, iconY);
-        ctx.lineTo(iconX + 6, iconY + 2);
-        ctx.lineTo(iconX + 6, iconY + 5);
-        ctx.lineTo(iconX - 3, iconY + 3);
+        ctx.lineTo(iconX + 12, iconY + 5);
+        ctx.lineTo(iconX + 12, iconY + 9);
+        ctx.lineTo(iconX - 3, iconY + 5);
         ctx.fill();
-    } else if (club.name === 'Driver') {
-        // Driver - large round head
+    } else if (club.name === '7 Iron') {
         ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 15);
-        ctx.lineTo(iconX, iconY - 3);
+        ctx.moveTo(iconX, iconY - 22);
+        ctx.lineTo(iconX, iconY);
         ctx.stroke();
         ctx.fillStyle = '#C0C0C0';
         ctx.beginPath();
-        ctx.arc(iconX + 3, iconY + 2, 6, 0, Math.PI * 2);
+        ctx.moveTo(iconX - 4, iconY);
+        ctx.lineTo(iconX + 9, iconY + 3);
+        ctx.lineTo(iconX + 9, iconY + 7);
+        ctx.lineTo(iconX - 4, iconY + 5);
+        ctx.fill();
+    } else if (club.name === 'Driver') {
+        ctx.strokeStyle = '#8B4513';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(iconX, iconY - 22);
+        ctx.lineTo(iconX, iconY - 5);
+        ctx.stroke();
+        ctx.fillStyle = '#C0C0C0';
+        ctx.beginPath();
+        ctx.arc(iconX + 4, iconY + 3, 9, 0, Math.PI * 2);
         ctx.fill();
     }
     
-    // Club name
+    // Club name (bigger text)
     ctx.fillStyle = '#fff';
-    ctx.font = '10px monospace';
+    ctx.font = '14px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(club.name, iconX, boxY + 55);
+    ctx.fillText(club.name, iconX, boxY + 88);
 }
 
 function drawWindCompass() {

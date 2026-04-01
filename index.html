@@ -88,11 +88,14 @@
             display: none;
             flex-direction: column;
             align-items: center;
+            width: 100%;
+            padding: 10px 0;
         }
         canvas {
             border: 4px solid #1a3010;
             image-rendering: pixelated;
             image-rendering: crisp-edges;
+            max-width: 100%;
         }
         #info {
             margin-top: 10px;
@@ -157,7 +160,7 @@
     </div>
     
     <div id="gameContainer">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <canvas id="gameCanvas" width="1200" height="800"></canvas>
         <div id="info">Par 3 | Strokes: <span id="strokes">0</span> | <span id="status">Hover to aim</span></div>
         <button id="backButton" onclick="backToMenu()">Back to Menu</button>
     </div>
