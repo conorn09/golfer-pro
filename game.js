@@ -69,8 +69,14 @@ const fallenLeaves = [];
 const fallingLeaves = []; // Animated falling leaves
 
 // Generate static textures
-for (let i = 0; i < 400; i++) {
-    grassTexture.push({ x: Math.random() * 800, y: Math.random() * 600 });
+for (let i = 0; i < 600; i++) {
+    grassTexture.push({ 
+        x: Math.random() * 800, 
+        y: Math.random() * 600,
+        height: 3 + Math.random() * 5, // Varied tall grass
+        lean: (Math.random() - 0.5) * 3, // Lean direction
+        shade: Math.random() // For color variation
+    });
 }
 for (let i = 0; i < 200; i++) {
     fairwayTexture.push({ x: 50 + Math.random() * 700, y: 250 + Math.random() * 100 });
@@ -103,7 +109,7 @@ let isDragging = false; // Track if we're dragging the map in map mode
 let dragStart = { x: 0, y: 0 };
 let cameraOffset = { x: 0, y: 0 }; // Manual camera offset from dragging
 
-// M key to toggle map mode
+// M key to toggle map mode, A/D to switch clubs
 document.addEventListener('keydown', (e) => {
     if (e.key === 'm' || e.key === 'M') {
         if (!game.isMoving) {
@@ -115,6 +121,12 @@ document.addEventListener('keydown', (e) => {
             }
             aimingMode = false;
         }
+    }
+    if ((e.key === 'a' || e.key === 'A') && !game.isMoving && !game.won) {
+        game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
+    }
+    if ((e.key === 'd' || e.key === 'D') && !game.isMoving && !game.won) {
+        game.selectedClub = (game.selectedClub + 1) % clubs.length;
     }
 });
 
@@ -154,12 +166,10 @@ canvas.addEventListener('mousedown', (e) => {
             return;
         }
         
-        // Convert screen coordinates to world coordinates
-        mousePos.x = (screenX / ZOOM) + game.camera.x;
-        mousePos.y = (screenY / ZOOM) + game.camera.y;
-        
         // First click: confirm target and start power meter
         if (!game.powerMeter.active) {
+            // Use the already-clamped mousePos from the aiming preview
+            // (not re-converted from screen coords, which can shift)
             game.targetPos.x = mousePos.x;
             game.targetPos.y = mousePos.y;
             game.targetPos.set = true;
@@ -594,10 +604,36 @@ function draw() {
     ctx.scale(ZOOM, ZOOM);
     ctx.translate(-game.camera.x, -game.camera.y);
     
-    // Add static grass texture to background (rough)
-    ctx.fillStyle = '#3a6c1c';
+    // Add static grass texture to background (rough - tall grass)
     for (const grass of grassTexture) {
-        ctx.fillRect(grass.x, grass.y, 1, 2);
+        // Varied green shades for depth
+        if (grass.shade > 0.6) {
+            ctx.strokeStyle = '#2d5a14';
+        } else if (grass.shade > 0.3) {
+            ctx.strokeStyle = '#3a6c1c';
+        } else {
+            ctx.strokeStyle = '#4a7c28';
+        }
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(grass.x, grass.y);
+        ctx.lineTo(grass.x + grass.lean, grass.y - grass.height);
+        ctx.stroke();
+    }
+    
+    // Add clumps of rough grass for more texture (static positions from grassTexture)
+    ctx.fillStyle = '#2d5a14';
+    for (let i = 0; i < grassTexture.length; i += 4) {
+        const cx = grassTexture[i].x;
+        const cy = grassTexture[i].y;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx - 2, cy - 4);
+        ctx.lineTo(cx, cy - 1);
+        ctx.lineTo(cx + 2, cy - 5);
+        ctx.lineTo(cx + 1, cy - 1);
+        ctx.lineTo(cx + 3, cy - 3);
+        ctx.fill();
     }
     
     // Draw fairway (lighter green path)
@@ -617,57 +653,101 @@ function draw() {
         }
     }
     
-    // Draw slopes as simple slanted decline
+    // Draw slopes as 3D terrain
     if (obstacles.slopes) {
     for (const slope of obstacles.slopes) {
-        // Shadow at bottom for depth
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+        const slopeTop = Math.min(...slope.points.map(p => p.y));
+        const slopeBottom = Math.max(...slope.points.map(p => p.y));
+        const slopeLeft = Math.min(...slope.points.map(p => p.x));
+        const slopeRight = Math.max(...slope.points.map(p => p.x));
+        const centerX = (slopeLeft + slopeRight) / 2;
+        const slopeHeight = slopeBottom - slopeTop;
+        const slopeWidth = slopeRight - slopeLeft;
+        
+        // Draw raised 3D effect - side face (shows the slope has height)
+        ctx.fillStyle = '#2a5a12';
         ctx.beginPath();
-        ctx.ellipse(
-            (slope.points[0].x + slope.points[6].x) / 2 + 3,
-            slope.points[6].y + 3,
-            48, 12, 0, 0, Math.PI * 2
-        );
+        ctx.moveTo(slopeLeft, slopeTop);
+        ctx.lineTo(slopeLeft, slopeTop + 8);
+        ctx.lineTo(slopeLeft + slopeWidth * 0.3, slopeBottom + 8);
+        ctx.lineTo(slopeRight - slopeWidth * 0.3, slopeBottom + 8);
+        ctx.lineTo(slopeRight, slopeTop + 8);
+        ctx.lineTo(slopeRight, slopeTop);
+        ctx.closePath();
         ctx.fill();
         
-        // Base slope - gradient from top to bottom
-        const gradient = ctx.createLinearGradient(
-            slope.points[0].x + 50, slope.points[0].y,
-            slope.points[0].x + 50, slope.points[6].y
-        );
-        gradient.addColorStop(0, '#6aac4c'); // Lighter at top
-        gradient.addColorStop(1, '#4a7c2c'); // Darker at bottom
-        
-        ctx.fillStyle = gradient;
+        // Main slope surface
         ctx.beginPath();
         ctx.moveTo(slope.points[0].x, slope.points[0].y);
         for (let i = 1; i < slope.points.length; i++) {
             ctx.lineTo(slope.points[i].x, slope.points[i].y);
         }
         ctx.closePath();
+        
+        // Gradient from bright (high) to dark (low) for 3D depth
+        const grad = ctx.createLinearGradient(centerX, slopeTop, centerX, slopeBottom);
+        grad.addColorStop(0, '#82c85c'); // Bright sunlit top
+        grad.addColorStop(0.15, '#6aac4c');
+        grad.addColorStop(0.5, '#5a9c3c');
+        grad.addColorStop(0.85, '#4a8c2c');
+        grad.addColorStop(1, '#3a7820'); // Dark shadowed bottom
+        ctx.fillStyle = grad;
         ctx.fill();
         
-        // Highlight on top edge (crest of slope)
-        ctx.fillStyle = 'rgba(140, 200, 100, 0.3)';
+        // Top edge highlight (bright crest line)
+        ctx.strokeStyle = 'rgba(180, 240, 140, 0.7)';
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.moveTo(slope.points[0].x, slope.points[0].y);
+        ctx.moveTo(slope.points[0].x + 2, slope.points[0].y);
         ctx.lineTo(slope.points[1].x, slope.points[1].y);
         ctx.lineTo(slope.points[2].x, slope.points[2].y);
-        ctx.lineTo(slope.points[3].x, slope.points[3].y);
-        ctx.lineTo(slope.points[3].x, slope.points[3].y + 10);
-        ctx.lineTo(slope.points[0].x, slope.points[0].y + 10);
-        ctx.closePath();
-        ctx.fill();
+        ctx.lineTo(slope.points[3].x - 2, slope.points[3].y);
+        ctx.stroke();
         
-        // Simple horizontal contour lines
-        ctx.strokeStyle = 'rgba(60, 100, 40, 0.4)';
-        ctx.lineWidth = 1;
-        for (let i = 0; i < 6; i++) {
-            const y = slope.points[0].y + 15 + i * 10;
+        // Bottom edge dark shadow
+        ctx.strokeStyle = 'rgba(20, 40, 10, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(slope.points[5].x, slope.points[5].y);
+        ctx.lineTo(slope.points[6].x, slope.points[6].y);
+        ctx.lineTo(slope.points[7].x, slope.points[7].y);
+        ctx.stroke();
+        
+        // Horizontal contour lines that curve slightly for 3D effect
+        for (let i = 1; i <= 6; i++) {
+            const t = i / 7;
+            const y = slopeTop + slopeHeight * t;
+            const alpha = 0.15 + t * 0.2; // Darker lines toward bottom
+            ctx.strokeStyle = `rgba(40, 70, 25, ${alpha})`;
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(slope.points[0].x + 5, y);
-            ctx.lineTo(slope.points[3].x - 5, y);
+            // Slight curve to show 3D surface
+            const curveAmount = Math.sin(t * Math.PI) * 3;
+            ctx.moveTo(slopeLeft + 6, y);
+            ctx.quadraticCurveTo(centerX, y - curveAmount, slopeRight - 6, y);
             ctx.stroke();
+        }
+        
+        // Directional chevron arrows showing ball roll direction
+        const dirX = slope.direction.x;
+        const dirY = slope.direction.y;
+        const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+        const normX = dirX / dirLen;
+        const normY = dirY / dirLen;
+        
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 2; col++) {
+                const ax = slopeLeft + 25 + col * 30;
+                const ay = slopeTop + 20 + row * 18;
+                
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(ax - normY * 4 - normX * 4, ay + normX * 4 - normY * 4);
+                ctx.lineTo(ax, ay);
+                ctx.lineTo(ax + normY * 4 - normX * 4, ay - normX * 4 - normY * 4);
+                ctx.stroke();
+            }
         }
     }
     }
