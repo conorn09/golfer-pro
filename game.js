@@ -27,6 +27,9 @@ const game = {
     flagWave: 0, // For flag animation
     windSway: 0, // For tree sway animation
     leafSpawnTimer: 0, // Timer for spawning new falling leaves
+    lastBallPos: { x: 100, y: 300 }, // Last position before shot (for water drops)
+    waterPenalty: false, // Show water penalty message
+    waterPenaltyTimer: 0,
     wind: { // Wind system that affects ball flight
         speed: 0, // mph
         direction: 0, // radians (0 = right, PI/2 = down, PI = left, 3PI/2 = up)
@@ -101,6 +104,171 @@ for (let i = 0; i < 60; i++) {
     });
 }
 
+// Pixel-art water ripple system
+const waterRipplePool = [];
+const MAX_RIPPLES_PER_HAZARD = 10;
+const RIPPLE_LIGHT = '#5EA8F0'; // Lighter shade of water
+const RIPPLE_BRIGHT = '#72B8F8'; // Brightest highlight
+
+function initRipple(hazardIndex) {
+    return {
+        hazardIndex: hazardIndex,
+        x: 0, y: 0,           // Position (set when spawned)
+        frame: 0,              // Current animation frame
+        totalFrames: 50 + Math.floor(Math.random() * 70), // 50-120 frames (~0.8-2s)
+        delay: Math.floor(Math.random() * 60), // Stagger start
+        size: 4 + Math.floor(Math.random() * 5), // 4-8 pixel radius
+        type: Math.floor(Math.random() * 3), // 0=oval, 1=broken arc, 2=streak
+        active: false
+    };
+}
+
+// Pre-create ripple pool (support up to 100 hazard indices for island water)
+for (let h = 0; h < 100; h++) {
+    for (let r = 0; r < MAX_RIPPLES_PER_HAZARD; r++) {
+        waterRipplePool.push(initRipple(h));
+    }
+}
+
+function spawnRipple(ripple, waterPoints) {
+    // Find a random point inside the water polygon
+    const minX = Math.min(...waterPoints.map(p => p.x)) + 8;
+    const maxX = Math.max(...waterPoints.map(p => p.x)) - 8;
+    const minY = Math.min(...waterPoints.map(p => p.y)) + 8;
+    const maxY = Math.max(...waterPoints.map(p => p.y)) - 8;
+    
+    // Try random positions until inside polygon
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const px = minX + Math.floor(Math.random() * (maxX - minX));
+        const py = minY + Math.floor(Math.random() * (maxY - minY));
+        
+        // Point-in-polygon check
+        let inside = false;
+        for (let i = 0, j = waterPoints.length - 1; i < waterPoints.length; j = i++) {
+            const xi = waterPoints[i].x, yi = waterPoints[i].y;
+            const xj = waterPoints[j].x, yj = waterPoints[j].y;
+            const intersect = ((yi > py) !== (yj > py))
+                && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        if (inside) {
+            ripple.x = px;
+            ripple.y = py;
+            ripple.frame = 0;
+            ripple.delay = Math.floor(Math.random() * 40);
+            ripple.totalFrames = 50 + Math.floor(Math.random() * 70);
+            ripple.size = 4 + Math.floor(Math.random() * 5);
+            ripple.type = Math.floor(Math.random() * 3);
+            ripple.active = true;
+            return;
+        }
+    }
+}
+
+function updateAndDrawRipples(ctx, hazardIndex, waterPoints) {
+    const ripples = waterRipplePool.filter(r => r.hazardIndex === hazardIndex);
+    let activeCount = ripples.filter(r => r.active).length;
+    
+    // Spawn new ripples if needed (more active, more frequent)
+    for (const ripple of ripples) {
+        if (!ripple.active && activeCount < 5 + Math.floor(Math.random() * 4)) {
+            if (Math.random() < 0.06) { // Higher chance per frame = more ripples
+                spawnRipple(ripple, waterPoints);
+                activeCount++;
+            }
+        }
+    }
+    
+    // Clip to water polygon
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(waterPoints[0].x, waterPoints[0].y);
+    for (let i = 1; i < waterPoints.length; i++) {
+        ctx.lineTo(waterPoints[i].x, waterPoints[i].y);
+    }
+    ctx.closePath();
+    ctx.clip();
+    
+    // Turn off smoothing for pixel-perfect rendering
+    ctx.imageSmoothingEnabled = false;
+    
+    for (const ripple of ripples) {
+        if (!ripple.active) continue;
+        
+        // Handle delay
+        if (ripple.delay > 0) {
+            ripple.delay--;
+            continue;
+        }
+        
+        ripple.frame++;
+        
+        // Calculate lifecycle progress (0 to 1)
+        const progress = ripple.frame / ripple.totalFrames;
+        
+        if (progress >= 1) {
+            ripple.active = false;
+            continue;
+        }
+        
+        // Fade: appear, hold, fade out
+        let visible = true;
+        if (progress < 0.15) {
+            visible = Math.floor(progress / 0.15 * 3) % 2 === 0; // Flicker in
+        } else if (progress > 0.75) {
+            visible = Math.floor((1 - progress) / 0.25 * 3) % 2 === 0; // Flicker out
+        }
+        if (!visible) continue;
+        
+        // Size grows slightly over lifetime
+        const currentSize = Math.floor(ripple.size * (0.6 + progress * 0.4));
+        const rx = Math.floor(ripple.x);
+        const ry = Math.floor(ripple.y);
+        
+        // Choose color based on progress
+        const color = progress < 0.5 ? RIPPLE_BRIGHT : RIPPLE_LIGHT;
+        ctx.fillStyle = color;
+        
+        if (ripple.type === 0) {
+            // Pixel oval highlight - top arc only
+            const w = currentSize;
+            const h = Math.max(1, Math.floor(currentSize * 0.4));
+            // Draw pixel arc (top half of an oval)
+            for (let px = -w; px <= w; px++) {
+                const edgeY = Math.floor(h * Math.sqrt(1 - (px * px) / (w * w)));
+                if (edgeY > 0) {
+                    ctx.fillRect(rx + px, ry - edgeY, 1, 1); // Top pixel
+                }
+            }
+        } else if (ripple.type === 1) {
+            // Broken arc - scattered pixels in arc shape
+            const w = currentSize;
+            for (let px = -w; px <= w; px += 2) {
+                const edgeY = Math.floor(currentSize * 0.3 * Math.sqrt(1 - (px * px) / (w * w)));
+                if (edgeY > 0) {
+                    ctx.fillRect(rx + px, ry - edgeY, 1, 1);
+                }
+            }
+            // Bottom arc fragments
+            for (let px = -w + 1; px <= w - 1; px += 3) {
+                const edgeY = Math.floor(currentSize * 0.3 * Math.sqrt(1 - (px * px) / (w * w)));
+                if (edgeY > 0) {
+                    ctx.fillRect(rx + px, ry + edgeY, 1, 1);
+                }
+            }
+        } else {
+            // Horizontal streak highlight
+            const w = currentSize;
+            ctx.fillRect(rx - Math.floor(w / 2), ry, w, 1);
+            if (currentSize > 5) {
+                ctx.fillRect(rx - Math.floor(w / 3), ry + 2, Math.floor(w * 0.5), 1);
+            }
+        }
+    }
+    
+    ctx.restore();
+}
+
 // Mouse handling
 let mousePos = { x: 0, y: 0 };
 let aimingMode = false; // Track if we're in aiming mode (before power meter)
@@ -109,7 +277,7 @@ let isDragging = false; // Track if we're dragging the map in map mode
 let dragStart = { x: 0, y: 0 };
 let cameraOffset = { x: 0, y: 0 }; // Manual camera offset from dragging
 
-// M key to toggle map mode, A/D to switch clubs
+// M key to toggle map mode, A/D or Arrow keys to switch clubs
 document.addEventListener('keydown', (e) => {
     if (e.key === 'm' || e.key === 'M') {
         if (!game.isMoving) {
@@ -122,10 +290,10 @@ document.addEventListener('keydown', (e) => {
             aimingMode = false;
         }
     }
-    if ((e.key === 'a' || e.key === 'A') && !game.isMoving && !game.won) {
+    if ((e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') && !game.isMoving && !game.won) {
         game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
     }
-    if ((e.key === 'd' || e.key === 'D') && !game.isMoving && !game.won) {
+    if ((e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') && !game.isMoving && !game.won) {
         game.selectedClub = (game.selectedClub + 1) % clubs.length;
     }
 });
@@ -296,8 +464,8 @@ function shoot() {
         const powerMultiplier = club.distance / club.maxPower;
         
         if (onGreen || club.name === 'Putter') {
-            // Putting - ball rolls on ground
-            const putterSpeed = power * (powerMultiplier / 25);
+            // Putting - ball rolls on ground (normal fairway speed)
+            const putterSpeed = power * (powerMultiplier / 12);
             game.ball.vx = Math.cos(actualAngle) * putterSpeed;
             game.ball.vy = Math.sin(actualAngle) * putterSpeed;
             game.ball.z = 0;
@@ -315,6 +483,9 @@ function shoot() {
         
         game.isMoving = true;
         game.strokes++;
+        game.waterPenalty = false;
+        game.lastBallPos.x = game.ball.x;
+        game.lastBallPos.y = game.ball.y;
         game.golfer.swinging = true;
         game.golfer.swingFrame = 0;
         updateUI();
@@ -499,6 +670,45 @@ function update() {
             }
             }
             
+            // Check if ball is in water hazard
+            let inWater = false;
+            if (obstacles.waterHazards) {
+                for (const water of obstacles.waterHazards) {
+                    let inside = false;
+                    for (let i = 0, j = water.points.length - 1; i < water.points.length; j = i++) {
+                        const xi = water.points[i].x, yi = water.points[i].y;
+                        const xj = water.points[j].x, yj = water.points[j].y;
+                        const intersect = ((yi > game.ball.y) !== (yj > game.ball.y))
+                            && (game.ball.x < (xj - xi) * (game.ball.y - yi) / (yj - yi) + xi);
+                        if (intersect) inside = !inside;
+                    }
+                    if (inside) {
+                        // Check ball isn't on the island green (course 2)
+                        const distToHole = Math.sqrt(
+                            (game.ball.x - game.hole.x) ** 2 + (game.ball.y - game.hole.y) ** 2
+                        );
+                        if (distToHole > GREEN_RADIUS + 15) { // Not on the green or beach
+                            inWater = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if (inWater) {
+                // Ball in water - penalty stroke + drop back to last position
+                game.ball.vx = 0;
+                game.ball.vy = 0;
+                game.ball.x = game.lastBallPos.x;
+                game.ball.y = game.lastBallPos.y;
+                game.ball.z = 0;
+                game.isMoving = false;
+                game.inAir = false;
+                game.strokes++; // Penalty stroke
+                game.waterPenalty = true;
+                updateUI();
+            }
+            
             // Check if ball is on slope
             if (obstacles.slopes) {
             for (const slope of obstacles.slopes) {
@@ -638,7 +848,12 @@ function draw() {
     
     // Draw fairway (lighter green path)
     ctx.fillStyle = '#5a9c3c';
-    ctx.fillRect(50, 250, 700, 100);
+    if (game.currentCourse === 2) {
+        // Shorter fairway that stops before the island water
+        ctx.fillRect(50, 250, 590, 100);
+    } else {
+        ctx.fillRect(50, 250, 700, 100);
+    }
     
     // Add static fairway texture with horizontal mowing pattern
     ctx.fillStyle = '#4a8c2c';
@@ -813,9 +1028,92 @@ function draw() {
     ctx.fillStyle = '#3a6c2c';
     
     if (game.currentCourse === 2) {
-        // Narrow elongated green for tropical course
+        // Draw island water FIRST (behind everything on the island)
+        if (obstacles.waterHazards && obstacles.waterHazards.length > 1) {
+            const islandWater = obstacles.waterHazards[1];
+            
+            // Deep ocean water
+            ctx.fillStyle = '#2E78C2';
+            ctx.beginPath();
+            ctx.moveTo(islandWater.points[0].x, islandWater.points[0].y);
+            for (let i = 1; i < islandWater.points.length; i++) {
+                ctx.lineTo(islandWater.points[i].x, islandWater.points[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            
+            // Lighter shallow water layer closer to shore
+            ctx.fillStyle = '#4A9AE8';
+            ctx.beginPath();
+            ctx.ellipse(game.hole.x, game.hole.y, 65, 70, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Lightest water right at shore edge
+            ctx.fillStyle = '#6BB8F0';
+            ctx.beginPath();
+            ctx.ellipse(game.hole.x, game.hole.y, 55, 60, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Water edge/border
+            ctx.strokeStyle = '#2E5C8A';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(islandWater.points[0].x, islandWater.points[0].y);
+            for (let i = 1; i < islandWater.points.length; i++) {
+                ctx.lineTo(islandWater.points[i].x, islandWater.points[i].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Pixel-art ripples on island water
+            updateAndDrawRipples(ctx, 99, islandWater.points);
+        }
+        
+        // Draw beach sand (island shoreline)
+        if (obstacles.sandTraps && obstacles.sandTraps.length > 0) {
+            const beach = obstacles.sandTraps[0];
+            
+            // Sand base
+            ctx.fillStyle = '#F0DCA0';
+            ctx.beginPath();
+            ctx.moveTo(beach.points[0].x, beach.points[0].y);
+            for (let i = 1; i < beach.points.length; i++) {
+                ctx.lineTo(beach.points[i].x, beach.points[i].y);
+            }
+            ctx.closePath();
+            ctx.fill();
+            
+            // Wet sand at water edge (darker ring)
+            ctx.strokeStyle = '#D4B878';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            
+            // Sand texture
+            if (sandTextures[0]) {
+                for (const grain of sandTextures[0]) {
+                    ctx.fillStyle = grain.color;
+                    ctx.fillRect(grain.x, grain.y, grain.size, grain.size);
+                }
+            }
+            
+            // Foam/wave line where water meets sand
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([3, 4]);
+            ctx.beginPath();
+            ctx.moveTo(beach.points[0].x, beach.points[0].y);
+            for (let i = 1; i < beach.points.length; i++) {
+                ctx.lineTo(beach.points[i].x, beach.points[i].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        
+        // Now draw the green on the island (circular, centered)
+        ctx.fillStyle = '#3a6c2c';
         ctx.beginPath();
-        ctx.ellipse(game.hole.x, game.hole.y, GREEN_RADIUS * 2, GREEN_RADIUS, 0, 0, Math.PI * 2);
+        ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
         ctx.fill();
     } else {
         // Circular green for other courses
@@ -850,10 +1148,51 @@ function draw() {
         ctx.fillRect(leaf.x + 1, leaf.y + 1, 1, 1);
     }
     
-    // Draw water hazards (for tropical course)
+    // Draw water hazards
     if (obstacles.waterHazards && obstacles.waterHazards.length > 0) {
-        for (const water of obstacles.waterHazards) {
-            // Water color
+        for (let w = 0; w < obstacles.waterHazards.length; w++) {
+            // Skip the island water on course 2 (already drawn behind the green)
+            if (game.currentCourse === 2 && w === 1) continue;
+            
+            const water = obstacles.waterHazards[w];
+            
+            // Sandy beach edge around the water (wider)
+            ctx.fillStyle = '#E8D4A0';
+            ctx.beginPath();
+            for (let i = 0; i < water.points.length; i++) {
+                const p = water.points[i];
+                const cx = water.points.reduce((s, pt) => s + pt.x, 0) / water.points.length;
+                const cy = water.points.reduce((s, pt) => s + pt.y, 0) / water.points.length;
+                const dx = p.x - cx;
+                const dy = p.y - cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const bx = p.x + (dx / dist) * 12;
+                const by = p.y + (dy / dist) * 12;
+                if (i === 0) ctx.moveTo(bx, by);
+                else ctx.lineTo(bx, by);
+            }
+            ctx.closePath();
+            ctx.fill();
+            
+            // Wet sand (darker, closer to water)
+            ctx.fillStyle = '#D4B878';
+            ctx.beginPath();
+            for (let i = 0; i < water.points.length; i++) {
+                const p = water.points[i];
+                const cx = water.points.reduce((s, pt) => s + pt.x, 0) / water.points.length;
+                const cy = water.points.reduce((s, pt) => s + pt.y, 0) / water.points.length;
+                const dx = p.x - cx;
+                const dy = p.y - cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const bx = p.x + (dx / dist) * 5;
+                const by = p.y + (dy / dist) * 5;
+                if (i === 0) ctx.moveTo(bx, by);
+                else ctx.lineTo(bx, by);
+            }
+            ctx.closePath();
+            ctx.fill();
+            
+            // Water fill
             ctx.fillStyle = '#4A90E2';
             ctx.beginPath();
             ctx.moveTo(water.points[0].x, water.points[0].y);
@@ -863,18 +1202,13 @@ function draw() {
             ctx.closePath();
             ctx.fill();
             
-            // Darker water edge
+            // Subtle water edge
             ctx.strokeStyle = '#2E5C8A';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 1;
             ctx.stroke();
             
-            // Water ripples/texture
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            for (let i = 0; i < 15; i++) {
-                const rx = water.points[0].x + Math.random() * 80;
-                const ry = water.points[0].y + Math.random() * 200;
-                ctx.fillRect(rx, ry, 2, 1);
-            }
+            // Pixel-art ripples
+            updateAndDrawRipples(ctx, w, water.points);
         }
     }
     
@@ -885,53 +1219,75 @@ function draw() {
         const ty = tree.y;
         
         if (tree.type === 'palm') {
-            // Draw palm tree
+            // Draw palm tree with wind sway
+            // Calculate wind sway for palm
+            const palmPhase = (tx * 0.08 + ty * 0.06) % (Math.PI * 2);
+            const windDirX = Math.cos(game.wind.direction);
+            const palmSway = Math.sin(game.windSway * 0.8 + palmPhase) * (game.wind.speed / 5) * 3 +
+                            Math.sin(game.windSway * 1.5 + palmPhase * 2) * 1;
+            const swayTopX = tx + palmSway;
+            
             // Shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
             ctx.beginPath();
             ctx.ellipse(tx + 2, ty + 10, 12, 6, 0, 0, Math.PI * 2);
             ctx.fill();
             
-            // Trunk - brown and curved
+            // Trunk - brown and curved (base stays, top sways)
             ctx.fillStyle = '#8B6F47';
-            ctx.fillRect(tx - 3, ty - 20, 6, 30);
+            ctx.beginPath();
+            ctx.moveTo(tx - 3, ty + 10);
+            ctx.lineTo(tx + 3, ty + 10);
+            ctx.lineTo(swayTopX + 3, ty - 20);
+            ctx.lineTo(swayTopX - 3, ty - 20);
+            ctx.closePath();
+            ctx.fill();
             ctx.fillStyle = '#A0826D';
-            ctx.fillRect(tx - 2, ty - 20, 3, 30);
+            ctx.beginPath();
+            ctx.moveTo(tx - 2, ty + 10);
+            ctx.lineTo(tx + 1, ty + 10);
+            ctx.lineTo(swayTopX + 1, ty - 20);
+            ctx.lineTo(swayTopX - 2, ty - 20);
+            ctx.closePath();
+            ctx.fill();
             
             // Trunk segments
             ctx.fillStyle = '#6B4F27';
             for (let i = 0; i < 4; i++) {
-                ctx.fillRect(tx - 3, ty - 18 + i * 7, 6, 2);
+                const segT = i / 4;
+                const segX = tx + (swayTopX - tx) * segT;
+                ctx.fillRect(segX - 3, ty - 18 + i * 7, 6, 2);
             }
             
-            // Palm fronds (leaves)
+            // Palm fronds (leaves) - sway with wind
+            const frondSway = palmSway * 1.2;
             ctx.fillStyle = '#2d5016';
             // Top frond
             ctx.beginPath();
-            ctx.ellipse(tx, ty - 28, 20, 8, -Math.PI / 6, 0, Math.PI * 2);
+            ctx.ellipse(swayTopX + frondSway * 0.3, ty - 28, 20, 8, -Math.PI / 6 + palmSway * 0.03, 0, Math.PI * 2);
             ctx.fill();
             // Left frond
             ctx.beginPath();
-            ctx.ellipse(tx - 15, ty - 22, 18, 7, -Math.PI / 3, 0, Math.PI * 2);
+            ctx.ellipse(swayTopX - 15 + frondSway * 0.2, ty - 22, 18, 7, -Math.PI / 3 + palmSway * 0.04, 0, Math.PI * 2);
             ctx.fill();
             // Right frond
             ctx.beginPath();
-            ctx.ellipse(tx + 15, ty - 22, 18, 7, Math.PI / 3, 0, Math.PI * 2);
+            ctx.ellipse(swayTopX + 15 + frondSway * 0.4, ty - 22, 18, 7, Math.PI / 3 + palmSway * 0.04, 0, Math.PI * 2);
             ctx.fill();
             // Back fronds
             ctx.fillStyle = '#1d4010';
             ctx.beginPath();
-            ctx.ellipse(tx - 10, ty - 25, 16, 6, -Math.PI / 4, 0, Math.PI * 2);
+            ctx.ellipse(swayTopX - 10 + frondSway * 0.2, ty - 25, 16, 6, -Math.PI / 4 + palmSway * 0.03, 0, Math.PI * 2);
             ctx.fill();
             ctx.beginPath();
-            ctx.ellipse(tx + 10, ty - 25, 16, 6, Math.PI / 4, 0, Math.PI * 2);
+            ctx.ellipse(swayTopX + 10 + frondSway * 0.3, ty - 25, 16, 6, Math.PI / 4 + palmSway * 0.03, 0, Math.PI * 2);
             ctx.fill();
             
             // Bright highlights on fronds
             ctx.fillStyle = '#4a7c2c';
-            ctx.fillRect(tx - 2, ty - 29, 4, 3);
-            ctx.fillRect(tx - 16, ty - 23, 4, 2);
-            ctx.fillRect(tx + 13, ty - 23, 4, 2);
+            ctx.fillRect(swayTopX - 2 + frondSway * 0.3, ty - 29, 4, 3);
+            ctx.fillRect(swayTopX - 16 + frondSway * 0.2, ty - 23, 4, 2);
+            ctx.fillRect(swayTopX + 13 + frondSway * 0.4, ty - 23, 4, 2);
         } else {
             // Draw regular forest tree with realistic wind sway
         
@@ -1288,6 +1644,28 @@ function draw() {
         ctx.font = '16px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('Click to hit!', canvas.width / 2, barY - 10);
+    }
+    
+    // Draw water penalty message
+    if (game.waterPenalty) {
+        game.waterPenaltyTimer++;
+        if (game.waterPenaltyTimer < 120) { // Show for 2 seconds
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(canvas.width / 2 - 140, canvas.height / 2 - 30, 280, 60);
+            ctx.strokeStyle = '#4A90E2';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(canvas.width / 2 - 140, canvas.height / 2 - 30, 280, 60);
+            ctx.fillStyle = '#FF6347';
+            ctx.font = 'bold 18px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('WATER HAZARD', canvas.width / 2, canvas.height / 2 - 5);
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px monospace';
+            ctx.fillText('+1 Penalty Stroke', canvas.width / 2, canvas.height / 2 + 18);
+        } else {
+            game.waterPenalty = false;
+            game.waterPenaltyTimer = 0;
+        }
     }
     
     // Draw scorecard when hole is complete
@@ -1774,11 +2152,38 @@ function loadCourse(courseNumber) {
         game.hole = { x: 750, y: 300 };
         GREEN_RADIUS = 40; // Narrow green
         
-        obstacles.sandTraps = [];
+        // Beach sand around the green island
+        obstacles.sandTraps = [
+            {
+                x: 700, y: 250,
+                points: [
+                    {x: 700, y: 240}, {x: 720, y: 235}, {x: 745, y: 232},
+                    {x: 770, y: 238}, {x: 790, y: 250}, {x: 795, y: 275},
+                    {x: 795, y: 310}, {x: 790, y: 340}, {x: 775, y: 358},
+                    {x: 755, y: 365}, {x: 730, y: 368}, {x: 710, y: 362},
+                    {x: 698, y: 348}, {x: 693, y: 325}, {x: 693, y: 290},
+                    {x: 695, y: 260}
+                ]
+            }
+        ];
         
-        // River running through middle
+        // Generate sand textures
+        for (let s = 0; s < obstacles.sandTraps.length; s++) {
+            sandTextures[s] = [];
+            for (let i = 0; i < 80; i++) {
+                sandTextures[s].push({
+                    x: 693 + Math.random() * 102,
+                    y: 232 + Math.random() * 136,
+                    size: Math.random() > 0.7 ? 1 : 2,
+                    color: Math.random() > 0.5 ? '#D4C090' : '#F0E4B0'
+                });
+            }
+        }
+        
+        // River running through middle + ocean/water around the island green
         obstacles.waterHazards = [
             {
+                // River
                 points: [
                     {x: 350, y: 200}, {x: 380, y: 210}, {x: 400, y: 240},
                     {x: 410, y: 280}, {x: 420, y: 320}, {x: 430, y: 360},
@@ -1786,10 +2191,21 @@ function loadCourse(courseNumber) {
                     {x: 370, y: 380}, {x: 360, y: 340}, {x: 350, y: 300},
                     {x: 340, y: 260}, {x: 330, y: 220}
                 ]
+            },
+            {
+                // Island water surrounding the green
+                points: [
+                    {x: 660, y: 210}, {x: 700, y: 200}, {x: 740, y: 195},
+                    {x: 780, y: 200}, {x: 800, y: 220}, {x: 800, y: 260},
+                    {x: 800, y: 300}, {x: 800, y: 360},
+                    {x: 800, y: 400}, {x: 770, y: 405}, {x: 735, y: 400},
+                    {x: 700, y: 395}, {x: 670, y: 385}, {x: 655, y: 360},
+                    {x: 650, y: 320}, {x: 650, y: 280}, {x: 655, y: 240}
+                ]
             }
         ];
         
-        // Palm trees
+        // Palm trees - removed from near the green, add a couple on the island
         obstacles.trees = [
             { x: 50, y: 240, radius: 18, type: 'palm' },
             { x: 90, y: 230, radius: 18, type: 'palm' },
@@ -1802,9 +2218,6 @@ function loadCourse(courseNumber) {
             { x: 520, y: 238, radius: 18, type: 'palm' },
             { x: 560, y: 232, radius: 18, type: 'palm' },
             { x: 600, y: 240, radius: 18, type: 'palm' },
-            { x: 640, y: 228, radius: 18, type: 'palm' },
-            { x: 680, y: 235, radius: 18, type: 'palm' },
-            { x: 720, y: 230, radius: 18, type: 'palm' },
             { x: 50, y: 360, radius: 18, type: 'palm' },
             { x: 90, y: 370, radius: 18, type: 'palm' },
             { x: 130, y: 365, radius: 18, type: 'palm' },
@@ -1816,9 +2229,9 @@ function loadCourse(courseNumber) {
             { x: 520, y: 362, radius: 18, type: 'palm' },
             { x: 560, y: 368, radius: 18, type: 'palm' },
             { x: 600, y: 360, radius: 18, type: 'palm' },
-            { x: 640, y: 372, radius: 18, type: 'palm' },
-            { x: 680, y: 365, radius: 18, type: 'palm' },
-            { x: 720, y: 370, radius: 18, type: 'palm' }
+            // Palm trees on the island
+            { x: 715, y: 250, radius: 14, type: 'palm' },
+            { x: 775, y: 340, radius: 14, type: 'palm' }
         ];
         
         obstacles.slopes = [];
@@ -1848,7 +2261,14 @@ function resetGame() {
     game.won = false;
     game.inAir = false;
     game.selectedClub = 0;
+    game.lastBallPos.x = game.tee.x;
+    game.lastBallPos.y = game.tee.y;
+    game.waterPenalty = false;
+    game.waterPenaltyTimer = 0;
     aimingMode = false;
+    mapMode = false;
+    cameraOffset.x = 0;
+    cameraOffset.y = 0;
     updateUI();
 }
 
