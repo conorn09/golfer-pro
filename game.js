@@ -60,8 +60,8 @@ const MIN_VELOCITY = 0.1;
 const GRAVITY = 0.15; // Reduced for slower, more visible ball flight
 let GREEN_RADIUS = 80;
 const ZOOM = 2; // 2x zoom
-const WORLD_WIDTH = 800;
-const WORLD_HEIGHT = 600;
+let WORLD_WIDTH = 800;
+let WORLD_HEIGHT = 600;
 
 // Static texture patterns (generated once)
 const grassTexture = [];
@@ -965,15 +965,70 @@ function draw() {
     ctx.fillStyle = '#5a9c3c';
     if (game.currentCourse === 2) {
         ctx.fillRect(50, 250, 590, 100);
+    } else if (game.currentCourse === 3) {
+        // Crescent fairway around the gorge
+        ctx.beginPath();
+        // Outer edge of crescent
+        ctx.moveTo(70, 720);
+        ctx.lineTo(70, 680);
+        ctx.quadraticCurveTo(100, 600, 180, 540);
+        ctx.quadraticCurveTo(300, 400, 500, 300);
+        ctx.quadraticCurveTo(650, 230, 800, 190);
+        ctx.quadraticCurveTo(900, 170, 1000, 170);
+        ctx.lineTo(1080, 170);
+        ctx.lineTo(1080, 250);
+        ctx.lineTo(1000, 250);
+        // Inner edge of crescent (closer to gorge)
+        ctx.quadraticCurveTo(880, 260, 780, 290);
+        ctx.quadraticCurveTo(640, 340, 480, 430);
+        ctx.quadraticCurveTo(340, 520, 230, 620);
+        ctx.quadraticCurveTo(180, 670, 150, 720);
+        ctx.lineTo(150, 780);
+        ctx.lineTo(70, 780);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Tee box area
+        ctx.fillStyle = '#6aac4c';
+        ctx.fillRect(80, 730, 60, 50);
     } else {
         ctx.fillRect(50, 250, 700, 100);
     }
     
-    const fwLen = game.currentCourse === 2 ? 590 : 700;
-    for (let i = 0; i < 10; i++) {
-        const bandW = fwLen / 10;
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(80, 150, 50, 0.07)' : 'rgba(40, 90, 25, 0.05)';
-        ctx.fillRect(50 + i * bandW, 250, bandW, 100);
+    const fwLen = game.currentCourse === 2 ? 590 : (game.currentCourse === 3 ? 0 : 700);
+    if (game.currentCourse !== 3) {
+        for (let i = 0; i < 10; i++) {
+            const bandW = fwLen / 10;
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(80, 150, 50, 0.07)' : 'rgba(40, 90, 25, 0.05)';
+            ctx.fillRect(50 + i * bandW, 250, bandW, 100);
+        }
+    } else {
+        // Course 3 mowing stripes clipped to crescent fairway
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(70, 720);
+        ctx.lineTo(70, 680);
+        ctx.quadraticCurveTo(100, 600, 180, 540);
+        ctx.quadraticCurveTo(300, 400, 500, 300);
+        ctx.quadraticCurveTo(650, 230, 800, 190);
+        ctx.quadraticCurveTo(900, 170, 1000, 170);
+        ctx.lineTo(1080, 170);
+        ctx.lineTo(1080, 250);
+        ctx.lineTo(1000, 250);
+        ctx.quadraticCurveTo(880, 260, 780, 290);
+        ctx.quadraticCurveTo(640, 340, 480, 430);
+        ctx.quadraticCurveTo(340, 520, 230, 620);
+        ctx.quadraticCurveTo(180, 670, 150, 720);
+        ctx.lineTo(150, 780);
+        ctx.lineTo(70, 780);
+        ctx.closePath();
+        ctx.clip();
+        
+        for (let i = 0; i < 20; i++) {
+            ctx.fillStyle = i % 2 === 0 ? 'rgba(80, 150, 50, 0.07)' : 'rgba(40, 90, 25, 0.05)';
+            ctx.fillRect(0, i * 45, 1200, 45);
+        }
+        ctx.restore();
     }
     
     const fwPal = ['#509032', '#56963a', '#64a844', '#4c8c2e', '#5ea040', '#6ab448'];
@@ -1181,7 +1236,12 @@ function draw() {
     // Draw green (before trees so trees can overlap it)
     ctx.fillStyle = '#3a6c2c';
     
-    if (game.currentCourse === 2) {
+    if (game.currentCourse === 3) {
+        // Compact elevated green for Audacity
+        ctx.beginPath();
+        ctx.arc(game.hole.x, game.hole.y, GREEN_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (game.currentCourse === 2) {
         // Draw island water FIRST (behind everything on the island)
         if (obstacles.waterHazards && obstacles.waterHazards.length > 1) {
             const islandWater = obstacles.waterHazards[1];
@@ -1309,6 +1369,91 @@ function draw() {
             if (game.currentCourse === 2 && w === 1) continue;
             
             const water = obstacles.waterHazards[w];
+            
+            // GORGE type rendering (Hole 3)
+            if (water.type === 'gorge') {
+                // Deep gorge layers
+                // Outer edge: rough/native grass
+                ctx.fillStyle = '#3a5c1c';
+                ctx.beginPath();
+                for (let i = 0; i < water.points.length; i++) {
+                    const p = water.points[i];
+                    const cx = water.points.reduce((s, pt) => s + pt.x, 0) / water.points.length;
+                    const cy = water.points.reduce((s, pt) => s + pt.y, 0) / water.points.length;
+                    const dx = p.x - cx, dy = p.y - cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const bx = p.x + (dx / dist) * 10, by = p.y + (dy / dist) * 10;
+                    if (i === 0) ctx.moveTo(bx, by); else ctx.lineTo(bx, by);
+                }
+                ctx.closePath();
+                ctx.fill();
+                
+                // Rocky cliff edge
+                ctx.fillStyle = '#8B8070';
+                ctx.beginPath();
+                for (let i = 0; i < water.points.length; i++) {
+                    const p = water.points[i];
+                    const cx = water.points.reduce((s, pt) => s + pt.x, 0) / water.points.length;
+                    const cy = water.points.reduce((s, pt) => s + pt.y, 0) / water.points.length;
+                    const dx = p.x - cx, dy = p.y - cy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const bx = p.x + (dx / dist) * 4, by = p.y + (dy / dist) * 4;
+                    if (i === 0) ctx.moveTo(bx, by); else ctx.lineTo(bx, by);
+                }
+                ctx.closePath();
+                ctx.fill();
+                
+                // Deep gorge floor
+                ctx.fillStyle = '#2a3a1a';
+                ctx.beginPath();
+                ctx.moveTo(water.points[0].x, water.points[0].y);
+                for (let i = 1; i < water.points.length; i++) {
+                    ctx.lineTo(water.points[i].x, water.points[i].y);
+                }
+                ctx.closePath();
+                ctx.fill();
+                
+                // Inner shadow/depth gradient
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fill();
+                
+                // Rock/limestone texture pixels
+                ctx.fillStyle = '#6B6050';
+                for (let i = 0; i < water.points.length - 1; i++) {
+                    const p = water.points[i];
+                    for (let j = 0; j < 3; j++) {
+                        const rx = p.x + (Math.sin(i * 7 + j * 13) * 8);
+                        const ry = p.y + (Math.cos(i * 11 + j * 7) * 6);
+                        ctx.fillRect(Math.floor(rx), Math.floor(ry), 2 + (j % 2), 2);
+                    }
+                }
+                
+                // Dark vegetation in gorge
+                ctx.fillStyle = '#1a2a0e';
+                for (let i = 0; i < 40; i++) {
+                    const idx = i % water.points.length;
+                    const p1 = water.points[idx];
+                    const p2 = water.points[(idx + 1) % water.points.length];
+                    const t = (i * 0.37) % 1;
+                    const gx = p1.x + (p2.x - p1.x) * t + Math.sin(i * 3) * 15;
+                    const gy = p1.y + (p2.y - p1.y) * t + Math.cos(i * 5) * 10;
+                    ctx.fillRect(Math.floor(gx), Math.floor(gy), 1, 3);
+                    ctx.fillRect(Math.floor(gx) + 2, Math.floor(gy) - 1, 1, 2);
+                }
+                
+                // Gorge edge detail line
+                ctx.strokeStyle = '#5a5040';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(water.points[0].x, water.points[0].y);
+                for (let i = 1; i < water.points.length; i++) {
+                    ctx.lineTo(water.points[i].x, water.points[i].y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+                
+                continue; // Skip normal water drawing
+            }
             
             // Sandy beach edge around the water (wider)
             ctx.fillStyle = '#E8D4A0';
@@ -1906,7 +2051,7 @@ function drawHUD() {
     // ---- TOP-LEFT: Hole Info Panel ----
     hudPanel(10, 10, 200, 80);
     
-    const courseName = game.currentCourse === 1 ? 'Forest Glen' : 'Tropical Paradise';
+    const courseName = game.currentCourse === 1 ? 'Forest Glen' : (game.currentCourse === 2 ? 'Tropical Paradise' : 'Audacity');
     ctx.fillStyle = 'rgba(100, 170, 80, 0.9)';
     ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'left';
@@ -2210,7 +2355,7 @@ function drawHUD() {
         ctx.fillText('HOLE COMPLETE', canvas.width / 2, cardY + 35);
         
         // Course
-        const cName = game.currentCourse === 1 ? 'Forest Glen' : 'Tropical Paradise';
+        const cName = game.currentCourse === 1 ? 'Forest Glen' : (game.currentCourse === 2 ? 'Tropical Paradise' : 'Audacity');
         ctx.fillStyle = 'rgba(200, 220, 200, 0.7)';
         ctx.font = '14px monospace';
         ctx.fillText(`Hole ${game.currentCourse} — ${cName}`, canvas.width / 2, cardY + 65);
@@ -2311,6 +2456,11 @@ function loadCourse(courseNumber) {
         // Tropical Paradise - Par 5 - More challenging wind
         game.wind.maxSpeed = 10;
         game.wind.speed = Math.random() * game.wind.maxSpeed;
+        game.wind.direction = Math.random() * Math.PI * 2;
+    } else if (courseNumber === 3) {
+        // Audacity - Par 5 - Mountain wind
+        game.wind.maxSpeed = 8;
+        game.wind.speed = 2 + Math.random() * (game.wind.maxSpeed - 2);
         game.wind.direction = Math.random() * Math.PI * 2;
     }
     
@@ -2507,6 +2657,172 @@ function loadCourse(courseNumber) {
         ];
         
         obstacles.slopes = [];
+    }
+    else if (courseNumber === 3) {
+        // ============================================================
+        // HOLE 3: AUDACITY — Pikewood National 8th
+        // Par 5, 562 yds, crescent fairway around gorge
+        // ============================================================
+        WORLD_WIDTH = 1200;
+        WORLD_HEIGHT = 900;
+        game.par = 5;
+        game.tee = { x: 100, y: 750 };
+        game.hole = { x: 1050, y: 200 };
+        GREEN_RADIUS = 35;
+        
+        // ---- GORGE HAZARD (uses waterHazards system with gorge type) ----
+        obstacles.waterHazards = [
+            {
+                type: 'gorge',
+                points: [
+                    // Massive crescent-interior gorge
+                    {x: 250, y: 650}, {x: 300, y: 580}, {x: 380, y: 500},
+                    {x: 470, y: 420}, {x: 560, y: 360}, {x: 650, y: 310},
+                    {x: 740, y: 280}, {x: 830, y: 260}, {x: 900, y: 250},
+                    {x: 950, y: 260}, {x: 980, y: 290},
+                    // Inner curve back
+                    {x: 940, y: 330}, {x: 870, y: 340}, {x: 790, y: 360},
+                    {x: 700, y: 390}, {x: 610, y: 430}, {x: 530, y: 480},
+                    {x: 450, y: 540}, {x: 380, y: 600}, {x: 320, y: 660}
+                ]
+            }
+        ];
+        
+        // ---- GREENSIDE BUNKER ----
+        obstacles.sandTraps = [
+            {
+                x: 1010, y: 220,
+                points: [
+                    {x: 1000, y: 230}, {x: 1010, y: 218}, {x: 1025, y: 215},
+                    {x: 1040, y: 220}, {x: 1045, y: 235}, {x: 1038, y: 248},
+                    {x: 1022, y: 252}, {x: 1008, y: 248}, {x: 1000, y: 240}
+                ]
+            },
+            {
+                x: 1060, y: 175,
+                points: [
+                    {x: 1055, y: 185}, {x: 1062, y: 172}, {x: 1078, y: 168},
+                    {x: 1090, y: 175}, {x: 1092, y: 190}, {x: 1085, y: 200},
+                    {x: 1070, y: 202}, {x: 1058, y: 196}
+                ]
+            }
+        ];
+        
+        // Generate sand textures
+        for (let s = 0; s < obstacles.sandTraps.length; s++) {
+            sandTextures[s] = [];
+            const trap = obstacles.sandTraps[s];
+            for (let i = 0; i < 50; i++) {
+                sandTextures[s].push({
+                    x: trap.x + Math.random() * 40 - 10,
+                    y: trap.y + Math.random() * 40 - 10,
+                    size: Math.random() > 0.7 ? 1 : 2,
+                    color: Math.random() > 0.5 ? '#D4C090' : '#F0E4B0'
+                });
+            }
+        }
+        
+        // ---- APPALACHIAN HARDWOOD TREES (outer forest boundary) ----
+        obstacles.trees = [];
+        
+        // Top forest border
+        for (let i = 0; i < 30; i++) {
+            obstacles.trees.push({
+                x: 30 + Math.random() * 1140,
+                y: 20 + Math.random() * 80,
+                radius: 14 + Math.random() * 6,
+                type: 'forest'
+            });
+        }
+        
+        // Left forest border
+        for (let i = 0; i < 15; i++) {
+            obstacles.trees.push({
+                x: 10 + Math.random() * 60,
+                y: 100 + Math.random() * 700,
+                radius: 14 + Math.random() * 6,
+                type: 'forest'
+            });
+        }
+        
+        // Right/top forest behind green
+        for (let i = 0; i < 20; i++) {
+            obstacles.trees.push({
+                x: 1100 + Math.random() * 80,
+                y: 50 + Math.random() * 400,
+                radius: 14 + Math.random() * 6,
+                type: 'forest'
+            });
+        }
+        
+        // Bottom forest border
+        for (let i = 0; i < 25; i++) {
+            obstacles.trees.push({
+                x: 30 + Math.random() * 1140,
+                y: 830 + Math.random() * 60,
+                radius: 14 + Math.random() * 6,
+                type: 'forest'
+            });
+        }
+        
+        // Trees along outer edge of crescent (left/bottom side)
+        for (let i = 0; i < 20; i++) {
+            const t = i / 20;
+            obstacles.trees.push({
+                x: 60 + t * 200 + Math.random() * 40,
+                y: 780 + Math.random() * 40 - 20,
+                radius: 12 + Math.random() * 6,
+                type: 'forest'
+            });
+        }
+        
+        // Trees near green area
+        for (let i = 0; i < 8; i++) {
+            obstacles.trees.push({
+                x: 1020 + Math.random() * 60,
+                y: 120 + Math.random() * 40,
+                radius: 12 + Math.random() * 4,
+                type: 'forest'
+            });
+        }
+        
+        // Gorge interior trees (small, deep)
+        for (let i = 0; i < 12; i++) {
+            obstacles.trees.push({
+                x: 400 + Math.random() * 400,
+                y: 380 + Math.random() * 200,
+                radius: 8 + Math.random() * 5,
+                type: 'forest'
+            });
+        }
+        
+        // ---- SLOPES (elevation along crescent) ----
+        obstacles.slopes = [
+            {
+                x: 200, y: 680,
+                points: [
+                    {x: 200, y: 680}, {x: 260, y: 670}, {x: 300, y: 660},
+                    {x: 310, y: 680}, {x: 280, y: 700}, {x: 230, y: 710},
+                    {x: 210, y: 700}
+                ],
+                direction: { x: 0.6, y: -0.4 }
+            },
+            {
+                x: 900, y: 200,
+                points: [
+                    {x: 900, y: 200}, {x: 950, y: 190}, {x: 990, y: 195},
+                    {x: 1000, y: 215}, {x: 970, y: 230}, {x: 930, y: 225},
+                    {x: 910, y: 215}
+                ],
+                direction: { x: 0.5, y: -0.3 }
+            }
+        ];
+    }
+    
+    // Reset world size for courses 1 and 2
+    if (courseNumber === 1 || courseNumber === 2) {
+        WORLD_WIDTH = 800;
+        WORLD_HEIGHT = 600;
     }
     
     // Update info display
