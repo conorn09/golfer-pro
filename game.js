@@ -71,25 +71,75 @@ const sandTextures = [[], []];
 const fallenLeaves = [];
 const fallingLeaves = []; // Animated falling leaves
 
-// Generate static textures
+// ============================================================
+// TERRAIN TEXTURE GENERATION
+// ============================================================
+
+// Global light direction (top-left, consistent everywhere)
+const LIGHT_ANGLE = Math.PI * 0.75; // ~135 degrees, light from upper-left
+const SHADOW_DX = Math.cos(LIGHT_ANGLE) * 8;
+const SHADOW_DY = Math.sin(LIGHT_ANGLE) * 8;
+
+// ROUGH: Dense, lush overgrown pixel grass
+const roughMarks = [];
+for (let i = 0; i < 2000; i++) {
+    const x = Math.floor(Math.random() * 800);
+    const y = Math.floor(Math.random() * 600);
+    const type = Math.floor(Math.random() * 10);
+    const variant = Math.floor(Math.random() * 4);
+    const windPhase = Math.random() * Math.PI * 2;
+    roughMarks.push({ x, y, type, variant, windPhase });
+}
+
+// ROUGH DECORATIVE: ground plants, weeds, tonal patches
+const roughDecor = [];
+for (let i = 0; i < 300; i++) {
+    const x = Math.floor(Math.random() * 800);
+    const y = Math.floor(Math.random() * 600);
+    const type = Math.floor(Math.random() * 5); // 0=weed, 1=dark patch, 2=flower speck, 3=leaf, 4=grass cluster
+    const variant = Math.floor(Math.random() * 3);
+    roughDecor.push({ x, y, type, variant });
+}
+
+// FAIRWAY: Clean, mowed pixel marks
+const fairwayMarks = [];
 for (let i = 0; i < 600; i++) {
-    grassTexture.push({ 
-        x: Math.random() * 800, 
-        y: Math.random() * 600,
-        height: 3 + Math.random() * 5, // Varied tall grass
-        lean: (Math.random() - 0.5) * 3, // Lean direction
-        shade: Math.random() // For color variation
+    const x = Math.floor(50 + Math.random() * 700);
+    const y = Math.floor(250 + Math.random() * 100);
+    const type = Math.floor(Math.random() * 6);
+    const variant = Math.floor(Math.random() * 3);
+    fairwayMarks.push({ x, y, type, variant });
+}
+
+// EDGE TUFTS: Irregular rough-to-fairway transition
+const edgeTufts = [];
+for (let i = 0; i < 220; i++) {
+    const x = Math.floor(48 + Math.random() * 704);
+    const side = Math.random() > 0.5 ? 1 : -1;
+    const y = Math.floor(side > 0 ? 348 + Math.random() * 14 : 252 - Math.random() * 14);
+    const size = Math.floor(Math.random() * 5);
+    const shade = Math.floor(Math.random() * 3);
+    edgeTufts.push({ x, y, size, side, shade });
+}
+
+// SAND-GRASS TRANSITION fringe marks
+const sandFringe = [];
+for (let i = 0; i < 80; i++) {
+    sandFringe.push({
+        angle: Math.random() * Math.PI * 2,
+        dist: Math.random() * 6,
+        size: Math.floor(Math.random() * 3),
+        type: Math.floor(Math.random() * 2)
     });
 }
-for (let i = 0; i < 200; i++) {
-    fairwayTexture.push({ x: 50 + Math.random() * 700, y: 250 + Math.random() * 100 });
-}
+
+// GREEN texture
 for (let i = 0; i < 80; i++) {
     const angle = Math.random() * Math.PI * 2;
     const radius = Math.random() * GREEN_RADIUS;
-    greenTexture.push({ 
-        x: 700 + Math.cos(angle) * radius, 
-        y: 300 + Math.sin(angle) * radius 
+    greenTexture.push({
+        x: 700 + Math.cos(angle) * radius,
+        y: 300 + Math.sin(angle) * radius
     });
 }
 
@@ -463,9 +513,9 @@ function shoot() {
         
         const powerMultiplier = club.distance / club.maxPower;
         
-        if (onGreen || club.name === 'Putter') {
-            // Putting - ball rolls on ground (normal fairway speed)
-            const putterSpeed = power * (powerMultiplier / 12);
+        if (club.name === 'Putter') {
+            // Putting - ball rolls on ground
+            const putterSpeed = power * (powerMultiplier / 8);
             game.ball.vx = Math.cos(actualAngle) * putterSpeed;
             game.ball.vy = Math.sin(actualAngle) * putterSpeed;
             game.ball.z = 0;
@@ -814,57 +864,161 @@ function draw() {
     ctx.scale(ZOOM, ZOOM);
     ctx.translate(-game.camera.x, -game.camera.y);
     
-    // Add static grass texture to background (rough - tall grass)
-    for (const grass of grassTexture) {
-        // Varied green shades for depth
-        if (grass.shade > 0.6) {
-            ctx.strokeStyle = '#2d5a14';
-        } else if (grass.shade > 0.3) {
-            ctx.strokeStyle = '#3a6c1c';
+    // ============================================================
+    // ROUGH TERRAIN (lush, dense, alive)
+    // ============================================================
+    const rPal = [
+        ['#264e10', '#2d5a14', '#356818', '#4a7c28'],
+        ['#2d5a14', '#356818', '#3f7420', '#4a7c28'],
+        ['#224a0e', '#2a5412', '#326016', '#3e6c20'],
+        ['#2d5a14', '#3a6c1c', '#4a7c28', '#5a8c34']
+    ];
+    const windT = game.windSway;
+    
+    for (const mark of roughMarks) {
+        const pal = rPal[mark.variant];
+        const wOff = Math.floor(Math.sin(windT * 0.6 + mark.windPhase) * 1.5);
+        const mx = mark.x, my = mark.y;
+        
+        if (mark.type === 0) {
+            ctx.fillStyle = pal[0]; ctx.fillRect(mx, my, 1, 3);
+        } else if (mark.type === 1) {
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx, my, 1, 5);
+            ctx.fillStyle = pal[2]; ctx.fillRect(mx + wOff, my - 1, 1, 2);
+        } else if (mark.type === 2) {
+            ctx.fillStyle = pal[0]; ctx.fillRect(mx, my, 1, 4); ctx.fillRect(mx + 2, my - 1, 1, 5);
+            ctx.fillStyle = pal[2]; ctx.fillRect(mx + 1, my + 1, 1, 3);
+            ctx.fillStyle = pal[3]; ctx.fillRect(mx + 3, my, 1, 3);
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx + wOff, my - 2, 1, 1); ctx.fillRect(mx + 2 + wOff, my - 2, 1, 1);
+        } else if (mark.type === 3) {
+            ctx.fillStyle = pal[0]; ctx.fillRect(mx, my, 2, 2); ctx.fillRect(mx + 1, my + 2, 1, 1);
+        } else if (mark.type === 4) {
+            ctx.fillStyle = '#5a8c34'; ctx.fillRect(mx + wOff, my, 1, 1);
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx, my + 1, 1, 1);
+        } else if (mark.type === 5) {
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx, my, 1, 4);
+            ctx.fillStyle = pal[2]; ctx.fillRect(mx + 2, my - 1, 1, 4);
+            ctx.fillStyle = pal[3]; ctx.fillRect(mx + 1 + wOff, my - 1, 1, 1);
+        } else if (mark.type === 6) {
+            ctx.fillStyle = pal[0]; ctx.fillRect(mx, my, 3, 1); ctx.fillRect(mx, my + 2, 2, 1);
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx + 1, my - 1, 1, 4); ctx.fillRect(mx + 3, my, 1, 3);
+            ctx.fillStyle = pal[3]; ctx.fillRect(mx + 2 + wOff, my - 2, 1, 1);
+        } else if (mark.type === 7) {
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx, my, 1, 3);
+            ctx.fillRect(mx + wOff, my - 1, 1, 1);
+            ctx.fillStyle = pal[2]; ctx.fillRect(mx + wOff, my - 2, 1, 1);
+        } else if (mark.type === 8) {
+            // Dense grass patch (fills empty areas)
+            ctx.fillStyle = pal[0]; ctx.fillRect(mx, my, 2, 3);
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx + 2, my - 1, 1, 4);
+            ctx.fillStyle = pal[2]; ctx.fillRect(mx - 1, my + 1, 1, 2);
+            ctx.fillStyle = pal[3]; ctx.fillRect(mx + 1, my - 1, 1, 1);
         } else {
-            ctx.strokeStyle = '#4a7c28';
+            // Low spreading ground cover
+            ctx.fillStyle = pal[0]; ctx.fillRect(mx, my, 4, 1);
+            ctx.fillStyle = pal[1]; ctx.fillRect(mx + 1, my + 1, 2, 1);
+            ctx.fillStyle = pal[2]; ctx.fillRect(mx, my - 1, 1, 1); ctx.fillRect(mx + 3, my - 1, 1, 1);
         }
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(grass.x, grass.y);
-        ctx.lineTo(grass.x + grass.lean, grass.y - grass.height);
-        ctx.stroke();
     }
     
-    // Add clumps of rough grass for more texture (static positions from grassTexture)
-    ctx.fillStyle = '#2d5a14';
-    for (let i = 0; i < grassTexture.length; i += 4) {
-        const cx = grassTexture[i].x;
-        const cy = grassTexture[i].y;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(cx - 2, cy - 4);
-        ctx.lineTo(cx, cy - 1);
-        ctx.lineTo(cx + 2, cy - 5);
-        ctx.lineTo(cx + 1, cy - 1);
-        ctx.lineTo(cx + 3, cy - 3);
-        ctx.fill();
+    // Rough decorative elements (weeds, patches, subtle flowers)
+    for (const d of roughDecor) {
+        if (d.type === 0) {
+            // Small weed / wild plant
+            ctx.fillStyle = '#2a5412';
+            ctx.fillRect(d.x, d.y, 1, 4);
+            ctx.fillRect(d.x - 1, d.y - 1, 1, 2);
+            ctx.fillRect(d.x + 1, d.y, 1, 2);
+            ctx.fillStyle = '#3a6c20';
+            ctx.fillRect(d.x, d.y - 2, 1, 1);
+        } else if (d.type === 1) {
+            // Darker tonal grass patch
+            ctx.fillStyle = '#224a0e';
+            ctx.fillRect(d.x, d.y, 3, 2);
+            ctx.fillRect(d.x + 1, d.y + 2, 2, 1);
+        } else if (d.type === 2) {
+            // Tiny flower speck (very subtle)
+            ctx.fillStyle = '#3a6c1c';
+            ctx.fillRect(d.x, d.y, 1, 2);
+            const fc = d.variant === 0 ? '#e8e080' : (d.variant === 1 ? '#e0c0d0' : '#d0e0c0');
+            ctx.fillStyle = fc;
+            ctx.fillRect(d.x, d.y - 1, 1, 1);
+        } else if (d.type === 3) {
+            // Fallen leaf speck
+            ctx.fillStyle = d.variant === 0 ? '#5a7030' : '#4a6828';
+            ctx.fillRect(d.x, d.y, 2, 1);
+            ctx.fillRect(d.x + 1, d.y + 1, 1, 1);
+        } else {
+            // Dense grass cluster filler
+            ctx.fillStyle = '#2d5a14';
+            ctx.fillRect(d.x, d.y, 1, 3); ctx.fillRect(d.x + 2, d.y, 1, 4);
+            ctx.fillStyle = '#356818';
+            ctx.fillRect(d.x + 1, d.y + 1, 1, 2); ctx.fillRect(d.x + 3, d.y, 1, 2);
+            ctx.fillStyle = '#4a7c28';
+            ctx.fillRect(d.x + 4, d.y + 1, 1, 2);
+        }
     }
     
-    // Draw fairway (lighter green path)
+    // ============================================================
+    // FAIRWAY
+    // ============================================================
     ctx.fillStyle = '#5a9c3c';
     if (game.currentCourse === 2) {
-        // Shorter fairway that stops before the island water
         ctx.fillRect(50, 250, 590, 100);
     } else {
         ctx.fillRect(50, 250, 700, 100);
     }
     
-    // Add static fairway texture with horizontal mowing pattern
-    ctx.fillStyle = '#4a8c2c';
-    for (const blade of fairwayTexture) {
-        ctx.fillRect(blade.x, blade.y, 1, 2);
+    const fwLen = game.currentCourse === 2 ? 590 : 700;
+    for (let i = 0; i < 10; i++) {
+        const bandW = fwLen / 10;
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(80, 150, 50, 0.07)' : 'rgba(40, 90, 25, 0.05)';
+        ctx.fillRect(50 + i * bandW, 250, bandW, 100);
     }
-    // Mowing stripes
-    ctx.fillStyle = 'rgba(74, 140, 44, 0.1)';
-    for (let i = 0; i < 7; i++) {
-        if (i % 2 === 0) {
-            ctx.fillRect(50 + i * 100, 250, 100, 100);
+    
+    const fwPal = ['#509032', '#56963a', '#64a844', '#4c8c2e', '#5ea040', '#6ab448'];
+    for (const mark of fairwayMarks) {
+        const c = fwPal[mark.variant] || fwPal[0];
+        if (mark.type === 0) {
+            ctx.fillStyle = c; ctx.fillRect(mark.x, mark.y, 3 + (mark.variant % 2), 1);
+        } else if (mark.type === 1) {
+            ctx.fillStyle = fwPal[3]; ctx.fillRect(mark.x, mark.y, 1, 1);
+            ctx.fillStyle = fwPal[4]; ctx.fillRect(mark.x + 3, mark.y + 1, 1, 1);
+        } else if (mark.type === 2) {
+            ctx.fillStyle = fwPal[0]; ctx.fillRect(mark.x, mark.y, 5, 1);
+        } else if (mark.type === 3) {
+            ctx.fillStyle = fwPal[1]; ctx.fillRect(mark.x, mark.y, 1, 2); ctx.fillRect(mark.x + 2, mark.y, 1, 2);
+        } else if (mark.type === 4) {
+            ctx.fillStyle = fwPal[5]; ctx.fillRect(mark.x, mark.y, 1, 1);
+        } else {
+            ctx.fillStyle = fwPal[2]; ctx.fillRect(mark.x, mark.y, 4, 1);
+            ctx.fillStyle = fwPal[0]; ctx.fillRect(mark.x + 1, mark.y + 2, 3, 1);
+        }
+    }
+    
+    // ============================================================
+    // ROUGH-FAIRWAY EDGE TRANSITION
+    // ============================================================
+    const eTufts = ['#2d5a14', '#3a6c1c', '#356818'];
+    for (const tuft of edgeTufts) {
+        ctx.fillStyle = eTufts[tuft.shade];
+        if (tuft.size === 0) {
+            ctx.fillRect(tuft.x, tuft.y, 1, 2);
+        } else if (tuft.size === 1) {
+            ctx.fillRect(tuft.x, tuft.y, 1, 3); ctx.fillRect(tuft.x + 1, tuft.y + 1, 1, 2);
+        } else if (tuft.size === 2) {
+            ctx.fillRect(tuft.x, tuft.y, 1, 4); ctx.fillRect(tuft.x + 2, tuft.y - 1, 1, 3);
+            ctx.fillStyle = eTufts[(tuft.shade + 1) % 3]; ctx.fillRect(tuft.x + 1, tuft.y, 1, 3);
+        } else if (tuft.size === 3) {
+            ctx.fillRect(tuft.x, tuft.y, 1, 5); ctx.fillRect(tuft.x + 2, tuft.y - 1, 1, 4);
+            ctx.fillRect(tuft.x + 4, tuft.y, 1, 3);
+            ctx.fillStyle = eTufts[(tuft.shade + 2) % 3];
+            ctx.fillRect(tuft.x + 1, tuft.y + 1, 1, 3); ctx.fillRect(tuft.x + 3, tuft.y, 1, 2);
+        } else {
+            ctx.fillRect(tuft.x, tuft.y, 1, 6); ctx.fillRect(tuft.x + 2, tuft.y - 2, 1, 5);
+            ctx.fillRect(tuft.x + 4, tuft.y - 1, 1, 4); ctx.fillRect(tuft.x + 5, tuft.y, 1, 3);
+            ctx.fillStyle = eTufts[(tuft.shade + 1) % 3];
+            ctx.fillRect(tuft.x + 1, tuft.y, 1, 4); ctx.fillRect(tuft.x + 3, tuft.y - 1, 1, 3);
         }
     }
     
@@ -1219,75 +1373,127 @@ function draw() {
         const ty = tree.y;
         
         if (tree.type === 'palm') {
-            // Draw palm tree with wind sway
-            // Calculate wind sway for palm
+            // ============================================================
+            // FULL PALM TREE - lush canopy, ringed trunk, directional shadow
+            // ============================================================
             const palmPhase = (tx * 0.08 + ty * 0.06) % (Math.PI * 2);
-            const windDirX = Math.cos(game.wind.direction);
             const palmSway = Math.sin(game.windSway * 0.8 + palmPhase) * (game.wind.speed / 5) * 3 +
                             Math.sin(game.windSway * 1.5 + palmPhase * 2) * 1;
-            const swayTopX = tx + palmSway;
+            const swayTopX = Math.floor(tx + palmSway);
+            const treeVariant = Math.floor((tx * 7 + ty * 13) % 3);
             
-            // Shadow
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-            ctx.beginPath();
-            ctx.ellipse(tx + 2, ty + 10, 12, 6, 0, 0, Math.PI * 2);
-            ctx.fill();
+            // DIRECTIONAL SHADOW (consistent light from upper-left)
+            const shDx = Math.floor(SHADOW_DX + palmSway * 0.4);
+            const shDy = Math.floor(SHADOW_DY);
+            // Trunk shadow line
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.10)';
+            ctx.fillRect(tx + shDx / 2, ty, 2, shDy + 4);
+            // Canopy shadow (irregular palm shape)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.09)';
+            const shCx = tx + shDx;
+            const shCy = ty + shDy;
+            // Build frond-like shadow from pixel rects
+            ctx.fillRect(shCx - 8, shCy - 2, 4, 2);
+            ctx.fillRect(shCx - 5, shCy, 10, 2);
+            ctx.fillRect(shCx - 3, shCy + 2, 8, 2);
+            ctx.fillRect(shCx + 2, shCy - 2, 5, 2);
+            ctx.fillRect(shCx - 6, shCy + 1, 3, 2);
+            ctx.fillRect(shCx + 4, shCy + 1, 4, 2);
+            ctx.fillRect(shCx - 2, shCy + 4, 6, 1);
             
-            // Trunk - brown and curved (base stays, top sways)
-            ctx.fillStyle = '#8B6F47';
-            ctx.beginPath();
-            ctx.moveTo(tx - 3, ty + 10);
-            ctx.lineTo(tx + 3, ty + 10);
-            ctx.lineTo(swayTopX + 3, ty - 20);
-            ctx.lineTo(swayTopX - 3, ty - 20);
-            ctx.closePath();
-            ctx.fill();
-            ctx.fillStyle = '#A0826D';
-            ctx.beginPath();
-            ctx.moveTo(tx - 2, ty + 10);
-            ctx.lineTo(tx + 1, ty + 10);
-            ctx.lineTo(swayTopX + 1, ty - 20);
-            ctx.lineTo(swayTopX - 2, ty - 20);
-            ctx.closePath();
-            ctx.fill();
+            // TRUNK - tapered with ring segments
+            const trunkBase = ty + 10;
+            const trunkTop = ty - 22;
+            const trunkHeight = trunkBase - trunkTop;
+            const rings = 7 + treeVariant;
             
-            // Trunk segments
-            ctx.fillStyle = '#6B4F27';
-            for (let i = 0; i < 4; i++) {
-                const segT = i / 4;
-                const segX = tx + (swayTopX - tx) * segT;
-                ctx.fillRect(segX - 3, ty - 18 + i * 7, 6, 2);
+            for (let r = 0; r < rings; r++) {
+                const t = r / rings;
+                const segY = Math.floor(trunkBase - t * trunkHeight);
+                const segX = Math.floor(tx + (swayTopX - tx) * t);
+                const width = Math.max(2, Math.floor(3.5 - t * 1.2));
+                const segH = Math.ceil(trunkHeight / rings) + 1;
+                
+                ctx.fillStyle = r % 2 === 0 ? '#7A5E3A' : '#8B6F47';
+                ctx.fillRect(segX - width, segY, width * 2, segH);
+                // Ring line
+                ctx.fillStyle = '#5C421E';
+                ctx.fillRect(segX - width, segY, width * 2, 1);
+                // Highlight side
+                ctx.fillStyle = '#A08060';
+                ctx.fillRect(segX - width + 1, segY + 1, 1, segH - 1);
             }
             
-            // Palm fronds (leaves) - sway with wind
-            const frondSway = palmSway * 1.2;
-            ctx.fillStyle = '#2d5016';
-            // Top frond
-            ctx.beginPath();
-            ctx.ellipse(swayTopX + frondSway * 0.3, ty - 28, 20, 8, -Math.PI / 6 + palmSway * 0.03, 0, Math.PI * 2);
-            ctx.fill();
-            // Left frond
-            ctx.beginPath();
-            ctx.ellipse(swayTopX - 15 + frondSway * 0.2, ty - 22, 18, 7, -Math.PI / 3 + palmSway * 0.04, 0, Math.PI * 2);
-            ctx.fill();
-            // Right frond
-            ctx.beginPath();
-            ctx.ellipse(swayTopX + 15 + frondSway * 0.4, ty - 22, 18, 7, Math.PI / 3 + palmSway * 0.04, 0, Math.PI * 2);
-            ctx.fill();
-            // Back fronds
-            ctx.fillStyle = '#1d4010';
-            ctx.beginPath();
-            ctx.ellipse(swayTopX - 10 + frondSway * 0.2, ty - 25, 16, 6, -Math.PI / 4 + palmSway * 0.03, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(swayTopX + 10 + frondSway * 0.3, ty - 25, 16, 6, Math.PI / 4 + palmSway * 0.03, 0, Math.PI * 2);
-            ctx.fill();
+            // CANOPY - fuller, denser, layered fronds
+            const frondSway = palmSway * 1.3;
+            const crownX = swayTopX;
+            const crownY = trunkTop;
             
-            // Bright highlights on fronds
-            ctx.fillStyle = '#4a7c2c';
-            ctx.fillRect(swayTopX - 2 + frondSway * 0.3, ty - 29, 4, 3);
-            ctx.fillRect(swayTopX - 16 + frondSway * 0.2, ty - 23, 4, 2);
-            ctx.fillRect(swayTopX + 13 + frondSway * 0.4, ty - 23, 4, 2);
+            function drawFrond(cx, cy, angle, length, sway, layer) {
+                const colors = [
+                    ['#1a3a0e', '#1d4010'],
+                    ['#244a14', '#2d5016'],
+                    ['#2e5a1c', '#3d6826'],
+                    ['#3a6c24', '#4d7836']
+                ];
+                const lc = colors[layer] || colors[1];
+                const swayAngle = angle + sway * 0.035;
+                
+                for (let s = 0; s < length; s++) {
+                    const t = s / length;
+                    const droop = t * t * 5;
+                    const px = Math.floor(cx + Math.cos(swayAngle) * s * 2.2);
+                    const py = Math.floor(cy + Math.sin(swayAngle) * s * 2.2 + droop);
+                    
+                    ctx.fillStyle = t < 0.6 ? lc[0] : lc[1];
+                    const leafW = Math.max(1, Math.floor((1 - t) * 3.5));
+                    ctx.fillRect(px, py, leafW, 1);
+                    
+                    // Leaf barbs
+                    if (s % 2 === 0 && s > 0) {
+                        ctx.fillRect(px - 1, py + 1, 1, 1);
+                        ctx.fillRect(px + leafW, py - 1, 1, 1);
+                    }
+                }
+            }
+            
+            // More fronds for fuller canopy
+            const numFronds = 7 + treeVariant;
+            const spread = Math.PI * 0.85;
+            
+            // Back layer (darkest, widest spread)
+            for (let f = 0; f < numFronds; f++) {
+                const a = -Math.PI / 2 + (f / (numFronds - 1) - 0.5) * spread * 2.2;
+                const fS = frondSway + Math.sin(game.windSway * 0.9 + palmPhase + f * 0.6) * 2;
+                drawFrond(crownX, crownY - 1, a, 6 + treeVariant, fS, 0);
+            }
+            // Mid layer
+            for (let f = 0; f < numFronds - 1; f++) {
+                const a = -Math.PI / 2 + (f / (numFronds - 2) - 0.5) * spread * 1.8;
+                const fS = frondSway + Math.sin(game.windSway * 1.1 + palmPhase + f * 0.8 + 0.3) * 2.5;
+                drawFrond(crownX, crownY, a, 5 + treeVariant, fS, 1);
+            }
+            // Front layer (brightest, fewer)
+            for (let f = 0; f < numFronds - 2; f++) {
+                const a = -Math.PI / 2 + (f / Math.max(1, numFronds - 3) - 0.5) * spread * 1.4;
+                const fS = frondSway + Math.sin(game.windSway * 1.3 + palmPhase + f * 1.0 + 0.6) * 3;
+                drawFrond(crownX, crownY + 1, a, 4 + treeVariant, fS, 2);
+            }
+            // Top highlight fronds
+            for (let f = 0; f < 3; f++) {
+                const a = -Math.PI / 2 + (f - 1) * 0.4;
+                const fS = frondSway + Math.sin(game.windSway * 1.5 + palmPhase + f * 1.3) * 2;
+                drawFrond(crownX, crownY + 2, a, 3 + treeVariant, fS, 3);
+            }
+            
+            // Crown center (coconut cluster)
+            ctx.fillStyle = '#5C421E';
+            ctx.fillRect(crownX - 2, crownY, 4, 3);
+            ctx.fillStyle = '#7A5E3A';
+            ctx.fillRect(crownX - 1, crownY - 1, 2, 2);
+            ctx.fillStyle = '#8B6F47';
+            ctx.fillRect(crownX, crownY, 1, 1);
+            
         } else {
             // Draw regular forest tree with realistic wind sway
         
