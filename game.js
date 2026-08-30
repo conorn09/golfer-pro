@@ -362,20 +362,20 @@ canvas.addEventListener('mousedown', (e) => {
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
         
-        // Check if clicking club selector box
-        const clubBoxX = 10;
-        const clubBoxY = canvas.height - 120;
-        const clubBoxWidth = 200;
-        const clubBoxHeight = 100;
+        // Check if clicking club selector (bottom-center panel)
+        const clubBoxW = 340;
+        const clubBoxH = 70;
+        const clubBoxX = canvas.width / 2 - clubBoxW / 2;
+        const clubBoxY = canvas.height - clubBoxH - 10;
         
-        if (screenY > clubBoxY && screenY < clubBoxY + clubBoxHeight &&
-            screenX > clubBoxX && screenX < clubBoxX + clubBoxWidth) {
-            // Click is inside club selector box
-            if (screenX > clubBoxX + 5 && screenX < clubBoxX + 40) {
+        if (screenY > clubBoxY && screenY < clubBoxY + clubBoxH &&
+            screenX > clubBoxX && screenX < clubBoxX + clubBoxW) {
+            // Click is inside club panel
+            if (screenX < clubBoxX + 50) {
                 // Left arrow area
                 game.selectedClub = (game.selectedClub - 1 + clubs.length) % clubs.length;
                 return;
-            } else if (screenX > clubBoxX + clubBoxWidth - 40 && screenX < clubBoxX + clubBoxWidth - 5) {
+            } else if (screenX > clubBoxX + clubBoxW - 50) {
                 // Right arrow area
                 game.selectedClub = (game.selectedClub + 1) % clubs.length;
                 return;
@@ -427,13 +427,13 @@ canvas.addEventListener('mousemove', (e) => {
     // Don't update aiming in map mode
     if (mapMode) return;
     
-    // Check if mouse is over club selector box
-    const clubBoxX = 10;
-    const clubBoxY = canvas.height - 120;
-    const clubBoxWidth = 200;
-    const clubBoxHeight = 100;
-    const mouseOverClubBox = screenX >= clubBoxX && screenX <= clubBoxX + clubBoxWidth &&
-                             screenY >= clubBoxY && screenY <= clubBoxY + clubBoxHeight;
+    // Check if mouse is over club selector box (bottom-center)
+    const clubBoxW = 340;
+    const clubBoxH = 70;
+    const clubBoxX = canvas.width / 2 - clubBoxW / 2;
+    const clubBoxY = canvas.height - clubBoxH - 10;
+    const mouseOverClubBox = screenX >= clubBoxX && screenX <= clubBoxX + clubBoxW &&
+                             screenY >= clubBoxY && screenY <= clubBoxY + clubBoxH;
     
     // Convert screen coordinates to world coordinates
     const rawX = (screenX / ZOOM) + game.camera.x;
@@ -1725,34 +1725,10 @@ function draw() {
     // Restore context for UI elements (drawn in screen space)
     ctx.restore();
     
-    // Draw club selector
-    drawClubSelector();
-    
-    // Draw wind compass
-    drawWindCompass();
-    
-    // Draw map mode indicator or hint
-    if (mapMode) {
-        // Map mode banner
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(canvas.width / 2 - 120, 10, 240, 30);
-        ctx.strokeStyle = '#FFFF00';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(canvas.width / 2 - 120, 10, 240, 30);
-        ctx.fillStyle = '#FFFF00';
-        ctx.font = 'bold 14px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('MAP VIEW - Drag to look around', canvas.width / 2, 30);
-        
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.font = '12px monospace';
-        ctx.fillText('Press M to return', canvas.width / 2, 55);
-    } else if (!game.isMoving && !game.won && !game.powerMeter.active) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.font = '11px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('Press M to view map', canvas.width / 2, canvas.height - 10);
-    }
+    // ============================================================
+    // PROFESSIONAL HUD SYSTEM
+    // ============================================================
+    drawHUD();
     
     // Draw aiming preview and target indicators in world space
     ctx.save();
@@ -1818,66 +1794,7 @@ function draw() {
     // Restore context after world space drawing
     ctx.restore();
     
-    // Draw power meter bar
-    if (game.powerMeter.active) {
-        const barWidth = 300;
-        const barHeight = 30;
-        const barX = canvas.width / 2 - barWidth / 2;
-        const barY = canvas.height - 150;
-        
-        // Background
-        ctx.fillStyle = '#333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Perfect zone (green)
-        const perfectStart = (game.powerMeter.perfectZoneStart / 100) * barWidth;
-        const perfectWidth = ((game.powerMeter.perfectZoneEnd - game.powerMeter.perfectZoneStart) / 100) * barWidth;
-        ctx.fillStyle = '#4CAF50';
-        ctx.fillRect(barX + perfectStart, barY, perfectWidth, barHeight);
-        
-        // Moving indicator
-        const indicatorX = barX + (game.powerMeter.position / 100) * barWidth;
-        ctx.fillStyle = '#FFF';
-        ctx.fillRect(indicatorX - 3, barY - 5, 6, barHeight + 10);
-        
-        // Border
-        ctx.strokeStyle = '#FFF';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
-        
-        // Text
-        ctx.fillStyle = '#FFF';
-        ctx.font = '16px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('Click to hit!', canvas.width / 2, barY - 10);
-    }
-    
-    // Draw water penalty message
-    if (game.waterPenalty) {
-        game.waterPenaltyTimer++;
-        if (game.waterPenaltyTimer < 120) { // Show for 2 seconds
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(canvas.width / 2 - 140, canvas.height / 2 - 30, 280, 60);
-            ctx.strokeStyle = '#4A90E2';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(canvas.width / 2 - 140, canvas.height / 2 - 30, 280, 60);
-            ctx.fillStyle = '#FF6347';
-            ctx.font = 'bold 18px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('WATER HAZARD', canvas.width / 2, canvas.height / 2 - 5);
-            ctx.fillStyle = '#fff';
-            ctx.font = '14px monospace';
-            ctx.fillText('+1 Penalty Stroke', canvas.width / 2, canvas.height / 2 + 18);
-        } else {
-            game.waterPenalty = false;
-            game.waterPenaltyTimer = 0;
-        }
-    }
-    
-    // Draw scorecard when hole is complete
-    if (game.won) {
-        drawScorecard();
-    }
+    // Power meter, penalties, and scorecard are now drawn inside drawHUD()
 }
 
 function drawGolfer() {
@@ -1953,245 +1870,394 @@ function drawGolfer() {
     }
 }
 
-function drawClubSelector() {
-    const club = clubs[game.selectedClub];
-    const boxX = 10;
-    const boxY = canvas.height - 120;
-    const boxWidth = 200;
-    const boxHeight = 100;
-    
-    // Background box
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-    
-    // Left arrow button area
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.fillRect(boxX + 5, boxY + 25, 35, 50);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(boxX + 30, boxY + 38);
-    ctx.lineTo(boxX + 15, boxY + 50);
-    ctx.lineTo(boxX + 30, boxY + 62);
-    ctx.stroke();
-    
-    // Right arrow button area
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.fillRect(boxX + boxWidth - 40, boxY + 25, 35, 50);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(boxX + boxWidth - 30, boxY + 38);
-    ctx.lineTo(boxX + boxWidth - 15, boxY + 50);
-    ctx.lineTo(boxX + boxWidth - 30, boxY + 62);
-    ctx.stroke();
-    
-    // Draw club icon (centered)
-    const iconX = boxX + boxWidth / 2;
-    const iconY = boxY + 50;
-    
-    if (club.name === 'Putter') {
-        ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 22);
-        ctx.lineTo(iconX, iconY);
-        ctx.stroke();
-        ctx.fillStyle = '#C0C0C0';
-        ctx.fillRect(iconX - 9, iconY, 18, 5);
-    } else if (club.name === 'Sand Wedge') {
-        ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 22);
-        ctx.lineTo(iconX, iconY);
-        ctx.stroke();
-        ctx.fillStyle = '#C0C0C0';
-        ctx.beginPath();
-        ctx.moveTo(iconX - 3, iconY);
-        ctx.lineTo(iconX + 12, iconY + 5);
-        ctx.lineTo(iconX + 12, iconY + 9);
-        ctx.lineTo(iconX - 3, iconY + 5);
-        ctx.fill();
-    } else if (club.name === '7 Iron') {
-        ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 22);
-        ctx.lineTo(iconX, iconY);
-        ctx.stroke();
-        ctx.fillStyle = '#C0C0C0';
-        ctx.beginPath();
-        ctx.moveTo(iconX - 4, iconY);
-        ctx.lineTo(iconX + 9, iconY + 3);
-        ctx.lineTo(iconX + 9, iconY + 7);
-        ctx.lineTo(iconX - 4, iconY + 5);
-        ctx.fill();
-    } else if (club.name === 'Driver') {
-        ctx.strokeStyle = '#8B4513';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(iconX, iconY - 22);
-        ctx.lineTo(iconX, iconY - 5);
-        ctx.stroke();
-        ctx.fillStyle = '#C0C0C0';
-        ctx.beginPath();
-        ctx.arc(iconX + 4, iconY + 3, 9, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // Club name (bigger text)
-    ctx.fillStyle = '#fff';
-    ctx.font = '14px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(club.name, iconX, boxY + 88);
-}
+// ============================================================
+// PROFESSIONAL HUD SYSTEM
+// ============================================================
 
-function drawWindCompass() {
-    const compassSize = 60;
-    const compassX = canvas.width - compassSize - 15;
-    const compassY = 15 + compassSize / 2;
+// HUD helper: draw a rounded rect panel
+function hudPanel(x, y, w, h, opts = {}) {
+    const r = opts.radius || 6;
+    const bg = opts.bg || 'rgba(15, 25, 15, 0.82)';
+    const border = opts.border || 'rgba(100, 170, 80, 0.4)';
+    const borderW = opts.borderWidth || 1.5;
     
-    // Background circle
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillStyle = bg;
     ctx.beginPath();
-    ctx.arc(compassX, compassY, compassSize / 2, 0, Math.PI * 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
     ctx.fill();
     
-    // Border
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = border;
+    ctx.lineWidth = borderW;
+    ctx.stroke();
+}
+
+function drawHUD() {
+    ctx.textBaseline = 'top';
+    
+    // ---- TOP-LEFT: Hole Info Panel ----
+    hudPanel(10, 10, 200, 80);
+    
+    const courseName = game.currentCourse === 1 ? 'Forest Glen' : 'Tropical Paradise';
+    ctx.fillStyle = 'rgba(100, 170, 80, 0.9)';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(courseName.toUpperCase(), 20, 16);
+    
+    // Hole and par
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(`HOLE ${game.currentCourse}`, 20, 32);
+    
+    ctx.fillStyle = 'rgba(200, 220, 200, 0.8)';
+    ctx.font = '13px monospace';
+    ctx.fillText(`Par ${game.par}`, 140, 36);
+    
+    // Strokes and score relative to par
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(`Strokes: ${game.strokes}`, 20, 62);
+    
+    const diff = game.strokes - game.par;
+    let scoreLabel = '';
+    let scoreCol = '#aaa';
+    if (game.strokes === 0) {
+        scoreLabel = 'E';
+        scoreCol = '#90EE90';
+    } else if (diff < 0) {
+        scoreLabel = `${diff}`;
+        scoreCol = '#90EE90';
+    } else if (diff === 0) {
+        scoreLabel = 'E';
+        scoreCol = '#87CEEB';
+    } else {
+        scoreLabel = `+${diff}`;
+        scoreCol = '#FFA060';
+    }
+    ctx.fillStyle = scoreCol;
+    ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(scoreLabel, 200, 62);
+    ctx.textAlign = 'left';
+    
+    // Distance to pin
+    const distToPin = Math.floor(Math.sqrt(
+        (game.ball.x - game.hole.x) ** 2 + (game.ball.y - game.hole.y) ** 2
+    ));
+    hudPanel(10, 96, 100, 28, { bg: 'rgba(15, 25, 15, 0.7)' });
+    ctx.fillStyle = 'rgba(200, 220, 200, 0.7)';
+    ctx.font = '11px monospace';
+    ctx.fillText('PIN', 18, 101);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(`${distToPin} yds`, 48, 100);
+    
+    // Lie indicator
+    const distToHole = Math.sqrt(
+        (game.ball.x - game.hole.x) ** 2 + (game.ball.y - game.hole.y) ** 2
+    );
+    let lie = 'Rough';
+    let lieCol = '#8B7355';
+    if (distToHole < GREEN_RADIUS) {
+        lie = 'Green'; lieCol = '#3a6c2c';
+    } else if (game.ball.y >= 248 && game.ball.y <= 352 && game.ball.x >= 48 && game.ball.x <= 752) {
+        lie = 'Fairway'; lieCol = '#5a9c3c';
+    }
+    hudPanel(115, 96, 95, 28, { bg: 'rgba(15, 25, 15, 0.7)' });
+    ctx.fillStyle = lieCol;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(lie, 162, 101);
+    ctx.textAlign = 'left';
+    
+    // ---- TOP-RIGHT: Wind Panel ----
+    const windPanelW = 130;
+    const windPanelH = 80;
+    const windPanelX = canvas.width - windPanelW - 10;
+    hudPanel(windPanelX, 10, windPanelW, windPanelH);
+    
+    ctx.fillStyle = 'rgba(100, 170, 80, 0.9)';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('WIND', windPanelX + windPanelW / 2, 16);
+    
+    // Wind compass circle
+    const compCx = windPanelX + 40;
+    const compCy = 55;
+    const compR = 22;
+    
+    ctx.strokeStyle = 'rgba(100, 170, 80, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(compCx, compCy, compR, 0, Math.PI * 2);
     ctx.stroke();
     
-    // Cardinal directions
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 10px monospace';
+    // Cardinal marks
+    ctx.fillStyle = 'rgba(200, 220, 200, 0.5)';
+    ctx.font = '8px monospace';
+    ctx.fillText('N', compCx, compCy - compR - 2);
+    ctx.fillText('S', compCx, compCy + compR + 2);
+    ctx.textAlign = 'left';
+    ctx.fillText('E', compCx + compR + 3, compCy + 3);
+    ctx.textAlign = 'right';
+    ctx.fillText('W', compCx - compR - 3, compCy + 3);
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    // N
-    ctx.fillText('N', compassX, compassY - 20);
-    // E
-    ctx.fillText('E', compassX + 20, compassY);
-    // S
-    ctx.fillText('S', compassX, compassY + 20);
-    // W
-    ctx.fillText('W', compassX - 20, compassY);
     
     // Wind arrow
-    const arrowLength = 18;
-    const arrowAngle = game.wind.direction - Math.PI / 2; // Adjust for canvas coordinates
-    const arrowEndX = compassX + Math.cos(arrowAngle) * arrowLength;
-    const arrowEndY = compassY + Math.sin(arrowAngle) * arrowLength;
-    
-    // Arrow color based on wind speed
     const windStrength = game.wind.speed / game.wind.maxSpeed;
-    if (windStrength < 0.3) {
-        ctx.strokeStyle = '#90EE90'; // Light green - calm
-    } else if (windStrength < 0.7) {
-        ctx.strokeStyle = '#FFD700'; // Yellow - moderate
-    } else {
-        ctx.strokeStyle = '#FF6347'; // Red - strong
-    }
+    const arrowAngle = game.wind.direction - Math.PI / 2;
+    const arrowLen = compR - 4;
+    const arrowEndX = compCx + Math.cos(arrowAngle) * arrowLen;
+    const arrowEndY = compCy + Math.sin(arrowAngle) * arrowLen;
     
-    ctx.lineWidth = 3;
+    let windCol = '#90EE90';
+    if (windStrength > 0.6) windCol = '#FF6347';
+    else if (windStrength > 0.3) windCol = '#FFD700';
+    
+    ctx.strokeStyle = windCol;
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(compassX, compassY);
+    ctx.moveTo(compCx, compCy);
     ctx.lineTo(arrowEndX, arrowEndY);
     ctx.stroke();
     
     // Arrow head
-    const headAngle1 = arrowAngle - Math.PI / 6;
-    const headAngle2 = arrowAngle + Math.PI / 6;
+    const ha1 = arrowAngle - Math.PI / 5;
+    const ha2 = arrowAngle + Math.PI / 5;
     ctx.beginPath();
     ctx.moveTo(arrowEndX, arrowEndY);
-    ctx.lineTo(arrowEndX - Math.cos(headAngle1) * 6, arrowEndY - Math.sin(headAngle1) * 6);
+    ctx.lineTo(arrowEndX - Math.cos(ha1) * 7, arrowEndY - Math.sin(ha1) * 7);
     ctx.moveTo(arrowEndX, arrowEndY);
-    ctx.lineTo(arrowEndX - Math.cos(headAngle2) * 6, arrowEndY - Math.sin(headAngle2) * 6);
+    ctx.lineTo(arrowEndX - Math.cos(ha2) * 7, arrowEndY - Math.sin(ha2) * 7);
     ctx.stroke();
     
-    // Wind speed text
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(Math.round(game.wind.speed) + ' mph', compassX, compassY + compassSize / 2 + 20);
-}
-
-function drawScorecard() {
-    // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Speed text
+    ctx.fillStyle = windCol;
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText(Math.round(game.wind.speed), windPanelX + 100, 40);
+    ctx.fillStyle = 'rgba(200, 220, 200, 0.7)';
+    ctx.font = '10px monospace';
+    ctx.fillText('mph', windPanelX + 100, 62);
     
-    // Scorecard box
-    const boxWidth = 400;
-    const boxHeight = 300;
-    const boxX = canvas.width / 2 - boxWidth / 2;
-    const boxY = canvas.height / 2 - boxHeight / 2;
-    
-    // Background
-    ctx.fillStyle = '#2d5016';
-    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-    
-    // Border
-    ctx.strokeStyle = '#6aac4c';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-    
-    // Title
-    ctx.fillStyle = '#FFFF00';
-    ctx.font = 'bold 32px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('HOLE COMPLETE!', canvas.width / 2, boxY + 50);
-    
-    // Course name
-    ctx.fillStyle = '#fff';
-    ctx.font = '20px monospace';
-    const courseName = game.currentCourse === 1 ? 'Forest Glen' : 'Tropical Paradise';
-    ctx.fillText(`Course ${game.currentCourse}: ${courseName}`, canvas.width / 2, boxY + 85);
-    
-    // Score details
-    const par = game.par;
-    const diff = game.strokes - par;
-    let scoreText = '';
-    let scoreColor = '#fff';
-    
-    if (diff === -2) {
-        scoreText = 'EAGLE! 🦅';
-        scoreColor = '#FFD700';
-    } else if (diff === -1) {
-        scoreText = 'BIRDIE! 🐦';
-        scoreColor = '#90EE90';
-    } else if (diff === 0) {
-        scoreText = 'PAR ⛳';
-        scoreColor = '#87CEEB';
-    } else if (diff === 1) {
-        scoreText = 'BOGEY';
-        scoreColor = '#FFA500';
-    } else if (diff === 2) {
-        scoreText = 'DOUBLE BOGEY';
-        scoreColor = '#FF6347';
+    // ---- TOP-RIGHT: Controls hint ----
+    hudPanel(windPanelX, 96, windPanelW, 28, { bg: 'rgba(15, 25, 15, 0.6)' });
+    ctx.fillStyle = 'rgba(200, 220, 200, 0.5)';
+    ctx.font = '10px monospace';
+    if (mapMode) {
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText('M: Exit Map', windPanelX + windPanelW / 2, 102);
     } else {
-        scoreText = `+${diff}`;
-        scoreColor = '#FF4444';
+        ctx.fillText('M: Map View', windPanelX + windPanelW / 2, 102);
     }
     
-    ctx.fillStyle = scoreColor;
-    ctx.font = 'bold 36px monospace';
-    ctx.fillText(scoreText, canvas.width / 2, boxY + 140);
+    // ---- BOTTOM-CENTER: Club Selection + Power Meter ----
+    const clubPanelW = 340;
+    const clubPanelH = 70;
+    const clubPanelX = canvas.width / 2 - clubPanelW / 2;
+    const clubPanelY = canvas.height - clubPanelH - 10;
     
-    // Stats
-    ctx.fillStyle = '#fff';
-    ctx.font = '18px monospace';
-    ctx.fillText(`Par: ${par}`, canvas.width / 2, boxY + 180);
-    ctx.fillText(`Your Score: ${game.strokes}`, canvas.width / 2, boxY + 210);
+    if (!game.won) {
+        hudPanel(clubPanelX, clubPanelY, clubPanelW, clubPanelH);
+        
+        const club = clubs[game.selectedClub];
+        
+        // Left arrow
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.font = 'bold 20px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('◀', clubPanelX + 25, clubPanelY + 22);
+        
+        // Right arrow
+        ctx.fillText('▶', clubPanelX + clubPanelW - 25, clubPanelY + 22);
+        
+        // Club name (prominent)
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 20px monospace';
+        ctx.fillText(club.name, clubPanelX + clubPanelW / 2, clubPanelY + 14);
+        
+        // Club range bar
+        const barMaxW = 160;
+        const barH = 6;
+        const barX = clubPanelX + clubPanelW / 2 - barMaxW / 2;
+        const barY = clubPanelY + 44;
+        const rangePct = club.distance / 250; // Normalize to max club distance
+        
+        // Bar background
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.fillRect(barX, barY, barMaxW, barH);
+        
+        // Bar fill
+        const barGrad = ctx.createLinearGradient(barX, barY, barX + barMaxW * rangePct, barY);
+        barGrad.addColorStop(0, '#4CAF50');
+        barGrad.addColorStop(1, '#8BC34A');
+        ctx.fillStyle = barGrad;
+        ctx.fillRect(barX, barY, barMaxW * rangePct, barH);
+        
+        // Range text
+        ctx.fillStyle = 'rgba(200, 220, 200, 0.7)';
+        ctx.font = '10px monospace';
+        ctx.fillText(`Range: ${club.distance} yds`, clubPanelX + clubPanelW / 2, clubPanelY + 55);
+        
+        // Key hints on sides
+        ctx.fillStyle = 'rgba(200, 220, 200, 0.4)';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('← A', clubPanelX + 8, clubPanelY + 55);
+        ctx.textAlign = 'right';
+        ctx.fillText('D →', clubPanelX + clubPanelW - 8, clubPanelY + 55);
+        ctx.textAlign = 'center';
+    }
     
-    // Instructions
-    ctx.font = '14px monospace';
-    ctx.fillStyle = '#aaa';
-    ctx.fillText('Click "Back to Menu" to play another course', canvas.width / 2, boxY + 260);
+    // ---- POWER METER (above club panel when active) ----
+    if (game.powerMeter.active) {
+        const meterW = 320;
+        const meterH = 24;
+        const meterX = canvas.width / 2 - meterW / 2;
+        const meterY = clubPanelY - 60;
+        
+        hudPanel(meterX - 10, meterY - 20, meterW + 20, meterH + 36, { border: 'rgba(255, 255, 255, 0.3)' });
+        
+        ctx.fillStyle = 'rgba(200, 220, 200, 0.7)';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('CLICK TO SWING', canvas.width / 2, meterY - 12);
+        
+        // Meter background
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.9)';
+        ctx.fillRect(meterX, meterY, meterW, meterH);
+        
+        // Zone colors
+        const pStart = (game.powerMeter.perfectZoneStart / 100) * meterW;
+        const pWidth = ((game.powerMeter.perfectZoneEnd - game.powerMeter.perfectZoneStart) / 100) * meterW;
+        
+        // Weak zone
+        ctx.fillStyle = '#C0392B';
+        ctx.fillRect(meterX, meterY, pStart, meterH);
+        
+        // Perfect zone
+        ctx.fillStyle = '#27AE60';
+        ctx.fillRect(meterX + pStart, meterY, pWidth, meterH);
+        
+        // Over zone
+        ctx.fillStyle = '#E67E22';
+        ctx.fillRect(meterX + pStart + pWidth, meterY, meterW - pStart - pWidth, meterH);
+        
+        // Moving indicator
+        const indX = meterX + (game.powerMeter.position / 100) * meterW;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(indX - 2, meterY - 4, 4, meterH + 8);
+        
+        // Border
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(meterX, meterY, meterW, meterH);
+    }
+    
+    // ---- MAP MODE OVERLAY ----
+    if (mapMode) {
+        hudPanel(canvas.width / 2 - 130, canvas.height / 2 - 18, 260, 36, { bg: 'rgba(15, 25, 15, 0.9)', border: '#FFD700' });
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('MAP VIEW — Drag to look around', canvas.width / 2, canvas.height / 2 - 10);
+    }
+    
+    // ---- WATER PENALTY POPUP ----
+    if (game.waterPenalty) {
+        game.waterPenaltyTimer++;
+        if (game.waterPenaltyTimer < 120) {
+            const popW = 280;
+            const popH = 60;
+            hudPanel(canvas.width / 2 - popW / 2, canvas.height / 2 - popH / 2, popW, popH, 
+                     { bg: 'rgba(20, 40, 60, 0.92)', border: '#4A90E2' });
+            ctx.fillStyle = '#FF6347';
+            ctx.font = 'bold 18px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('WATER HAZARD', canvas.width / 2, canvas.height / 2 - 15);
+            ctx.fillStyle = '#fff';
+            ctx.font = '13px monospace';
+            ctx.fillText('+1 Penalty Stroke — Drop back', canvas.width / 2, canvas.height / 2 + 8);
+        } else {
+            game.waterPenalty = false;
+            game.waterPenaltyTimer = 0;
+        }
+    }
+    
+    // ---- SCORECARD OVERLAY ----
+    if (game.won) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const cardW = 420;
+        const cardH = 320;
+        const cardX = canvas.width / 2 - cardW / 2;
+        const cardY = canvas.height / 2 - cardH / 2;
+        
+        hudPanel(cardX, cardY, cardW, cardH, { bg: 'rgba(20, 40, 20, 0.95)', border: '#6aac4c', borderWidth: 3, radius: 10 });
+        
+        // Title
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 28px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('HOLE COMPLETE', canvas.width / 2, cardY + 35);
+        
+        // Course
+        const cName = game.currentCourse === 1 ? 'Forest Glen' : 'Tropical Paradise';
+        ctx.fillStyle = 'rgba(200, 220, 200, 0.7)';
+        ctx.font = '14px monospace';
+        ctx.fillText(`Hole ${game.currentCourse} — ${cName}`, canvas.width / 2, cardY + 65);
+        
+        // Score result
+        const par = game.par;
+        const scoreDiff = game.strokes - par;
+        let sText = '', sCol = '#fff';
+        if (scoreDiff <= -3) { sText = 'ALBATROSS!'; sCol = '#E040FF'; }
+        else if (scoreDiff === -2) { sText = 'EAGLE!'; sCol = '#FFD700'; }
+        else if (scoreDiff === -1) { sText = 'BIRDIE!'; sCol = '#90EE90'; }
+        else if (scoreDiff === 0) { sText = 'PAR'; sCol = '#87CEEB'; }
+        else if (scoreDiff === 1) { sText = 'BOGEY'; sCol = '#FFA500'; }
+        else if (scoreDiff === 2) { sText = 'DOUBLE BOGEY'; sCol = '#FF6347'; }
+        else { sText = `+${scoreDiff}`; sCol = '#FF4444'; }
+        
+        ctx.fillStyle = sCol;
+        ctx.font = 'bold 34px monospace';
+        ctx.fillText(sText, canvas.width / 2, cardY + 115);
+        
+        // Stats table
+        const tableY = cardY + 155;
+        hudPanel(cardX + 40, tableY, cardW - 80, 80, { bg: 'rgba(0,0,0,0.3)', border: 'rgba(100,170,80,0.2)' });
+        
+        ctx.fillStyle = 'rgba(200, 220, 200, 0.6)';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('Par', cardX + 60, tableY + 12);
+        ctx.fillText('Strokes', cardX + 60, tableY + 34);
+        ctx.fillText('Score', cardX + 60, tableY + 56);
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 16px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${par}`, cardX + cardW - 60, tableY + 10);
+        ctx.fillText(`${game.strokes}`, cardX + cardW - 60, tableY + 32);
+        ctx.fillStyle = sCol;
+        ctx.fillText(scoreDiff === 0 ? 'E' : (scoreDiff > 0 ? `+${scoreDiff}` : `${scoreDiff}`), cardX + cardW - 60, tableY + 54);
+        
+        // Back button hint
+        ctx.fillStyle = 'rgba(200, 220, 200, 0.5)';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Click "Back to Menu" to continue', canvas.width / 2, cardY + cardH - 25);
+    }
+    
+    ctx.textBaseline = 'alphabetic';
 }
 
 function updateUI() {
