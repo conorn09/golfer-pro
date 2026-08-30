@@ -653,101 +653,115 @@ function draw() {
         }
     }
     
-    // Draw slopes as 3D terrain
-    if (obstacles.slopes) {
+    // Draw slopes - seamless with fairway using alternating mow bands
+    if (obstacles.slopes && obstacles.slopes.length > 0) {
     for (const slope of obstacles.slopes) {
         const slopeTop = Math.min(...slope.points.map(p => p.y));
         const slopeBottom = Math.max(...slope.points.map(p => p.y));
         const slopeLeft = Math.min(...slope.points.map(p => p.x));
         const slopeRight = Math.max(...slope.points.map(p => p.x));
-        const centerX = (slopeLeft + slopeRight) / 2;
         const slopeHeight = slopeBottom - slopeTop;
         const slopeWidth = slopeRight - slopeLeft;
         
-        // Draw raised 3D effect - side face (shows the slope has height)
-        ctx.fillStyle = '#2a5a12';
-        ctx.beginPath();
-        ctx.moveTo(slopeLeft, slopeTop);
-        ctx.lineTo(slopeLeft, slopeTop + 8);
-        ctx.lineTo(slopeLeft + slopeWidth * 0.3, slopeBottom + 8);
-        ctx.lineTo(slopeRight - slopeWidth * 0.3, slopeBottom + 8);
-        ctx.lineTo(slopeRight, slopeTop + 8);
-        ctx.lineTo(slopeRight, slopeTop);
-        ctx.closePath();
-        ctx.fill();
+        // Determine slope axis from direction
+        const isHorizontal = Math.abs(slope.direction.x) > Math.abs(slope.direction.y);
         
-        // Main slope surface
+        // Clip everything to the slope polygon
+        ctx.save();
         ctx.beginPath();
         ctx.moveTo(slope.points[0].x, slope.points[0].y);
         for (let i = 1; i < slope.points.length; i++) {
             ctx.lineTo(slope.points[i].x, slope.points[i].y);
         }
         ctx.closePath();
+        ctx.clip();
         
-        // Gradient from bright (high) to dark (low) for 3D depth
-        const grad = ctx.createLinearGradient(centerX, slopeTop, centerX, slopeBottom);
-        grad.addColorStop(0, '#82c85c'); // Bright sunlit top
-        grad.addColorStop(0.15, '#6aac4c');
-        grad.addColorStop(0.5, '#5a9c3c');
-        grad.addColorStop(0.85, '#4a8c2c');
-        grad.addColorStop(1, '#3a7820'); // Dark shadowed bottom
-        ctx.fillStyle = grad;
-        ctx.fill();
+        // Base fill matches fairway
+        ctx.fillStyle = '#5a9c3c';
+        ctx.fillRect(slopeLeft, slopeTop, slopeWidth, slopeHeight);
         
-        // Top edge highlight (bright crest line)
-        ctx.strokeStyle = 'rgba(180, 240, 140, 0.7)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(slope.points[0].x + 2, slope.points[0].y);
-        ctx.lineTo(slope.points[1].x, slope.points[1].y);
-        ctx.lineTo(slope.points[2].x, slope.points[2].y);
-        ctx.lineTo(slope.points[3].x - 2, slope.points[3].y);
-        ctx.stroke();
+        // Alternating mow bands along the slope direction
+        const bandCount = 7;
+        if (isHorizontal) {
+            const bandW = slopeWidth / bandCount;
+            for (let i = 0; i < bandCount; i++) {
+                const t = i / bandCount;
+                if (i % 2 === 0) {
+                    ctx.fillStyle = `rgba(90, 170, 65, ${0.3 - t * 0.15})`;
+                } else {
+                    ctx.fillStyle = `rgba(35, 70, 20, ${0.06 + t * 0.1})`;
+                }
+                ctx.fillRect(slopeLeft + i * bandW, slopeTop, bandW, slopeHeight);
+            }
+            // Darkening gradient along slope direction
+            const darkGrad = ctx.createLinearGradient(slopeLeft, slopeTop + slopeHeight / 2, slopeRight, slopeTop + slopeHeight / 2);
+            darkGrad.addColorStop(0, 'rgba(255,255,255,0.05)');
+            darkGrad.addColorStop(0.5, 'rgba(0,0,0,0)');
+            darkGrad.addColorStop(1, 'rgba(0,0,0,0.12)');
+            ctx.fillStyle = darkGrad;
+            ctx.fillRect(slopeLeft, slopeTop, slopeWidth, slopeHeight);
+        } else {
+            const bandH = slopeHeight / bandCount;
+            for (let i = 0; i < bandCount; i++) {
+                const t = i / bandCount;
+                if (i % 2 === 0) {
+                    ctx.fillStyle = `rgba(90, 170, 65, ${0.3 - t * 0.15})`;
+                } else {
+                    ctx.fillStyle = `rgba(35, 70, 20, ${0.06 + t * 0.1})`;
+                }
+                ctx.fillRect(slopeLeft, slopeTop + i * bandH, slopeWidth, bandH);
+            }
+            // Darkening gradient along slope direction
+            const darkGrad = ctx.createLinearGradient(slopeLeft + slopeWidth / 2, slopeTop, slopeLeft + slopeWidth / 2, slopeBottom);
+            darkGrad.addColorStop(0, 'rgba(255,255,255,0.05)');
+            darkGrad.addColorStop(0.5, 'rgba(0,0,0,0)');
+            darkGrad.addColorStop(1, 'rgba(0,0,0,0.12)');
+            ctx.fillStyle = darkGrad;
+            ctx.fillRect(slopeLeft, slopeTop, slopeWidth, slopeHeight);
+        }
         
-        // Bottom edge dark shadow
-        ctx.strokeStyle = 'rgba(20, 40, 10, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(slope.points[5].x, slope.points[5].y);
-        ctx.lineTo(slope.points[6].x, slope.points[6].y);
-        ctx.lineTo(slope.points[7].x, slope.points[7].y);
-        ctx.stroke();
+        ctx.restore(); // Unclip
         
-        // Horizontal contour lines that curve slightly for 3D effect
-        for (let i = 1; i <= 6; i++) {
-            const t = i / 7;
-            const y = slopeTop + slopeHeight * t;
-            const alpha = 0.15 + t * 0.2; // Darker lines toward bottom
-            ctx.strokeStyle = `rgba(40, 70, 25, ${alpha})`;
-            ctx.lineWidth = 1;
+        // Subtle crest highlight on the uphill edge
+        ctx.strokeStyle = 'rgba(130, 200, 100, 0.35)';
+        ctx.lineWidth = 1;
+        if (isHorizontal) {
             ctx.beginPath();
-            // Slight curve to show 3D surface
-            const curveAmount = Math.sin(t * Math.PI) * 3;
-            ctx.moveTo(slopeLeft + 6, y);
-            ctx.quadraticCurveTo(centerX, y - curveAmount, slopeRight - 6, y);
+            ctx.moveTo(slopeLeft, slopeTop);
+            ctx.lineTo(slopeLeft, slopeBottom);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(slopeLeft, slopeTop);
+            ctx.lineTo(slopeRight, slopeTop);
             ctx.stroke();
         }
         
-        // Directional chevron arrows showing ball roll direction
+        // Small subtle chevrons showing roll direction
         const dirX = slope.direction.x;
         const dirY = slope.direction.y;
         const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
         const normX = dirX / dirLen;
         const normY = dirY / dirLen;
         
-        for (let row = 0; row < 3; row++) {
-            for (let col = 0; col < 2; col++) {
-                const ax = slopeLeft + 25 + col * 30;
-                const ay = slopeTop + 20 + row * 18;
-                
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.moveTo(ax - normY * 4 - normX * 4, ay + normX * 4 - normY * 4);
-                ctx.lineTo(ax, ay);
-                ctx.lineTo(ax + normY * 4 - normX * 4, ay - normX * 4 - normY * 4);
-                ctx.stroke();
+        const chevronCount = isHorizontal ? 3 : 3;
+        for (let i = 0; i < chevronCount; i++) {
+            let ax, ay;
+            if (isHorizontal) {
+                ax = slopeLeft + slopeWidth * 0.5;
+                ay = slopeTop + slopeHeight * (0.25 + i * 0.25);
+            } else {
+                ax = slopeLeft + slopeWidth * (0.25 + i * 0.25);
+                ay = slopeTop + slopeHeight * 0.5;
             }
+            
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(ax - normY * 3 - normX * 4, ay + normX * 3 - normY * 4);
+            ctx.lineTo(ax, ay);
+            ctx.lineTo(ax + normY * 3 - normX * 4, ay - normX * 3 - normY * 4);
+            ctx.stroke();
         }
     }
     }
@@ -1742,15 +1756,14 @@ function loadCourse(courseNumber) {
         ];
         
         obstacles.slopes = [
-            { 
-                x: 400, y: 280, 
+            {
+                x: 550, y: 250,
                 points: [
-                    {x: 400, y: 290}, {x: 420, y: 280}, {x: 460, y: 280},
-                    {x: 495, y: 285}, {x: 500, y: 310}, {x: 495, y: 350},
-                    {x: 470, y: 360}, {x: 430, y: 360}, {x: 405, y: 350},
-                    {x: 400, y: 320}
+                    {x: 550, y: 250}, {x: 580, y: 250}, {x: 610, y: 250},
+                    {x: 620, y: 250}, {x: 620, y: 350}, {x: 610, y: 350},
+                    {x: 580, y: 350}, {x: 550, y: 350}
                 ],
-                direction: { x: 0, y: 1 } // Direction vector (will be scaled by slopeStrength)
+                direction: { x: 1, y: 0 } // Rolls toward the hole (right)
             }
         ];
     }
